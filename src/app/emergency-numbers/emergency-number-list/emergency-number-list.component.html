@@ -1,0 +1,131 @@
+<div class="emergency-number-container">
+  <app-header></app-header>
+  
+  <div class="emergency-number-content">
+    <app-sidebar></app-sidebar>
+    
+    <main class="main-content">
+      <div class="page-header">
+        <h1>Numéros d'urgence</h1>
+        <button mat-raised-button color="primary" routerLink="/emergency-numbers/new">
+          <mat-icon>add</mat-icon>
+          Nouveau numéro d'urgence
+        </button>
+      </div>
+
+      <div class="search-container">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Rechercher</mat-label>
+          <input matInput [(ngModel)]="searchTerm" (ngModelChange)="onSearchChange()" placeholder="Nom, numéro, description...">
+          <mat-icon matPrefix>search</mat-icon>
+        </mat-form-field>
+      </div>
+
+      @if (isLoading) {
+        <div class="loading-container">
+          <mat-spinner></mat-spinner>
+        </div>
+      } @else {
+        <mat-card class="table-card">
+          <mat-card-content>
+            <table mat-table [dataSource]="filteredEmergencyNumbers" class="emergency-number-table">
+              <!-- Colonne Nom -->
+              <ng-container matColumnDef="name">
+                <th mat-header-cell *matHeaderCellDef>Nom</th>
+                <td mat-cell *matCellDef="let number">{{ number.name }}</td>
+              </ng-container>
+
+              <!-- Colonne Numéro -->
+              <ng-container matColumnDef="number">
+                <th mat-header-cell *matHeaderCellDef>Numéro</th>
+                <td mat-cell *matCellDef="let number">
+                  <a [href]="'tel:' + number.number" class="phone-link">
+                    <mat-icon>phone</mat-icon>
+                    {{ number.number }}
+                  </a>
+                </td>
+              </ng-container>
+
+              <!-- Colonne Catégorie -->
+              <ng-container matColumnDef="category">
+                <th mat-header-cell *matHeaderCellDef>Catégorie</th>
+                <td mat-cell *matCellDef="let number">
+                  @if (number.category) {
+                    <span class="category-badge" [class]="'category-' + number.category">
+                      {{ categoryLabels[number.category] || number.category }}
+                    </span>
+                  } @else {
+                    <span class="no-category">-</span>
+                  }
+                </td>
+              </ng-container>
+
+              <!-- Colonne Icône -->
+              <ng-container matColumnDef="icon">
+                <th mat-header-cell *matHeaderCellDef>Icône</th>
+                <td mat-cell *matCellDef="let number">
+                  @if (number.icon) {
+                    <span class="icon-badge">{{ number.icon }}</span>
+                  } @else {
+                    <span class="no-icon">-</span>
+                  }
+                </td>
+              </ng-container>
+
+              <!-- Colonne Couleur -->
+              <ng-container matColumnDef="color">
+                <th mat-header-cell *matHeaderCellDef>Couleur</th>
+                <td mat-cell *matCellDef="let number">
+                  @if (number.color) {
+                    <div class="color-display">
+                      <span class="color-preview" [style.background-color]="number.color"></span>
+                      <span class="color-value">{{ number.color }}</span>
+                    </div>
+                  } @else {
+                    <span class="no-color">-</span>
+                  }
+                </td>
+              </ng-container>
+
+              <!-- Colonne Description -->
+              <ng-container matColumnDef="description">
+                <th mat-header-cell *matHeaderCellDef>Description</th>
+                <td mat-cell *matCellDef="let number">{{ number.description || '-' }}</td>
+              </ng-container>
+
+              <!-- Colonne Actions -->
+              <ng-container matColumnDef="actions">
+                <th mat-header-cell *matHeaderCellDef>Actions</th>
+                <td mat-cell *matCellDef="let number">
+                  <button mat-icon-button color="primary" (click)="editEmergencyNumber(number.id!)" title="Modifier">
+                    <mat-icon>edit</mat-icon>
+                  </button>
+                  <button mat-icon-button color="warn" (click)="deleteEmergencyNumber(number.id!, number.name)" title="Supprimer">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+            </table>
+
+            @if (filteredEmergencyNumbers.length === 0 && !isLoading) {
+              <div class="empty-state">
+                <mat-icon>emergency</mat-icon>
+                @if (searchTerm) {
+                  <p>Aucun numéro d'urgence trouvé pour "{{ searchTerm }}"</p>
+                } @else {
+                  <p>Aucun numéro d'urgence enregistré</p>
+                  <button mat-raised-button color="primary" routerLink="/emergency-numbers/new">
+                    Ajouter un numéro d'urgence
+                  </button>
+                }
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
+    </main>
+  </div>
+</div>

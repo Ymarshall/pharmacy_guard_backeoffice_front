@@ -1,0 +1,50 @@
+.sidebar {
+  width: 260px;
+  height: calc(100vh - 64px);
+  background: var(--cote-ivoire-white);
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+}
+
+mat-nav-list {
+  padding: 8px 0;
+}
+
+a[mat-list-item] {
+  margin: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+a[mat-list-item]:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+a[mat-list-item].active {
+  background: linear-gradient(135deg, var(--cote-ivoire-orange), var(--cote-ivoire-green));
+  color: white;
+}
+
+a[mat-list-item].active mat-icon {
+  color: white;
+}
+
+a[mat-list-item] mat-icon {
+  color: #666;
+  margin-right: 16px;
+}
+
+a[mat-list-item] span {
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 80px;
+  }
+  
+  a[mat-list-item] span {
+    display: none;
+  }
+}
+

@@ -1,0 +1,24 @@
+<mat-toolbar color="primary" class="header-toolbar">
+  <div class="header-left">
+    <mat-icon class="logo-icon">local_pharmacy</mat-icon>
+    <span class="app-title">Pharmacy Guard</span>
+  </div>
+  
+  <div class="header-right">
+    <div class="user-info">
+      <mat-icon>account_circle</mat-icon>
+      <span class="user-name">
+        {{ currentUser?.firstName }} {{ currentUser?.lastName }}
+      </span>
+    </div>
+    <button mat-icon-button [matMenuTriggerFor]="userMenu" aria-label="Menu utilisateur">
+      <mat-icon>more_vert</mat-icon>
+    </button>
+    <mat-menu #userMenu="matMenu">
+      <button mat-menu-item (click)="logout()">
+        <mat-icon>logout</mat-icon>
+        <span>Déconnexion</span>
+      </button>
+    </mat-menu>
+  </div>
+</mat-toolbar>

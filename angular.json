@@ -62,7 +62,8 @@
               "buildTarget": "pharmacy_guard:build:production"
             },
             "development": {
-              "buildTarget": "pharmacy_guard:build:development"
+              "buildTarget": "pharmacy_guard:build:development",
+              "proxyConfig": "proxy.conf.json"
             }
           },
           "defaultConfiguration": "development"

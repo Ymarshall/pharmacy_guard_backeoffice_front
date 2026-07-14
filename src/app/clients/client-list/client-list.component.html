@@ -1,0 +1,147 @@
+<div class="client-list-container">
+  <app-header></app-header>
+  
+  <div class="client-list-content">
+    <app-sidebar></app-sidebar>
+    
+    <main class="main-content">
+      <div class="page-header">
+        <div class="header-content">
+          <div>
+            <h1>👥 Clients</h1>
+            <p class="subtitle">Gestion des clients de l'application mobile</p>
+          </div>
+        </div>
+      </div>
+
+      <mat-card class="list-card">
+        <mat-card-header>
+          <mat-card-title>Liste des clients</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <!-- Barre de recherche -->
+          <div class="search-bar">
+            <mat-form-field appearance="outline" class="search-field">
+              <mat-label>Rechercher un client</mat-label>
+              <input 
+                matInput 
+                [(ngModel)]="searchTerm" 
+                (input)="onSearch()"
+                placeholder="Nom, prénom, email, téléphone...">
+              <mat-icon matPrefix>search</mat-icon>
+            </mat-form-field>
+            <div class="search-info">
+              <span>{{ dataSource.filteredData.length }} client(s) trouvé(s)</span>
+            </div>
+          </div>
+
+          @if (isLoading) {
+            <div class="loading-container">
+              <mat-spinner></mat-spinner>
+              <p>Chargement des clients...</p>
+            </div>
+          } @else if (dataSource.filteredData.length > 0) {
+            <div class="table-container">
+              <table mat-table [dataSource]="dataSource" class="client-table">
+                <!-- Colonne Nom -->
+                <ng-container matColumnDef="name">
+                  <th mat-header-cell *matHeaderCellDef>Nom complet</th>
+                  <td mat-cell *matCellDef="let client">
+                    <div class="client-name">
+                      <mat-icon>person</mat-icon>
+                      <span>{{ getClientFullName(client) }}</span>
+                    </div>
+                  </td>
+                </ng-container>
+
+                <!-- Colonne Email -->
+                <ng-container matColumnDef="email">
+                  <th mat-header-cell *matHeaderCellDef>Email</th>
+                  <td mat-cell *matCellDef="let client">
+                    <div class="client-email">
+                      <mat-icon>email</mat-icon>
+                      <span>{{ client.email || '-' }}</span>
+                    </div>
+                  </td>
+                </ng-container>
+
+                <!-- Colonne Téléphone -->
+                <ng-container matColumnDef="phone">
+                  <th mat-header-cell *matHeaderCellDef>Téléphone</th>
+                  <td mat-cell *matCellDef="let client">
+                    @if (client.phone) {
+                      <div class="client-phone">
+                        <mat-icon>phone</mat-icon>
+                        <span>{{ client.phone }}</span>
+                      </div>
+                    } @else {
+                      <span class="no-data">-</span>
+                    }
+                  </td>
+                </ng-container>
+
+                <!-- Colonne Type de provider -->
+                <ng-container matColumnDef="providerType">
+                  <th mat-header-cell *matHeaderCellDef>Type de connexion</th>
+                  <td mat-cell *matCellDef="let client">
+                    <mat-chip>{{ getProviderTypeLabel(client.providerType) }}</mat-chip>
+                  </td>
+                </ng-container>
+
+                <!-- Colonne Statut -->
+                <ng-container matColumnDef="status">
+                  <th mat-header-cell *matHeaderCellDef>Statut</th>
+                  <td mat-cell *matCellDef="let client">
+                    @if (client.isActive) {
+                      <mat-chip color="primary">Actif</mat-chip>
+                    } @else {
+                      <mat-chip color="warn">Inactif</mat-chip>
+                    }
+                  </td>
+                </ng-container>
+
+                <!-- Colonne Date de création -->
+                <ng-container matColumnDef="createdAt">
+                  <th mat-header-cell *matHeaderCellDef>Date d'inscription</th>
+                  <td mat-cell *matCellDef="let client">
+                    <span>{{ formatDate(client.createdAt) }}</span>
+                  </td>
+                </ng-container>
+
+                <!-- Colonne Actions -->
+                <ng-container matColumnDef="actions">
+                  <th mat-header-cell *matHeaderCellDef>Actions</th>
+                  <td mat-cell *matCellDef="let client">
+                    <div class="action-buttons">
+                      <button 
+                        mat-icon-button 
+                        [color]="client.isActive ? 'warn' : 'primary'"
+                        (click)="toggleClientStatus(client)"
+                        [matTooltip]="client.isActive ? 'Désactiver le client' : 'Activer le client'">
+                        <mat-icon>{{ client.isActive ? 'block' : 'check_circle' }}</mat-icon>
+                      </button>
+                    </div>
+                  </td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+              </table>
+              <mat-paginator 
+                [pageSize]="pageSize"
+                [pageSizeOptions]="pageSizeOptions"
+                [length]="dataSource.filteredData.length"
+                showFirstLastButtons>
+              </mat-paginator>
+            </div>
+          } @else {
+            <div class="no-data-container">
+              <mat-icon>people_outline</mat-icon>
+              <p>{{ searchTerm ? 'Aucun client trouvé pour cette recherche' : 'Aucun client enregistré' }}</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+    </main>
+  </div>
+</div>

@@ -1,0 +1,349 @@
+<div class="dashboard-container">
+  <app-header></app-header>
+  
+  <div class="dashboard-content">
+    <app-sidebar></app-sidebar>
+    
+    <main class="main-content">
+      <div class="dashboard-header">
+        <h1>📊 Dashboard Backoffice</h1>
+        <p class="subtitle">Vue d'ensemble de votre système Pharmacy Guard</p>
+      </div>
+
+      @if (isLoading) {
+        <div class="loading-container">
+          <mat-spinner></mat-spinner>
+          <p>Chargement des statistiques...</p>
+        </div>
+      } @else if (dashboardStats) {
+        <!-- Vue d'ensemble (Cards) -->
+        <div class="stats-grid">
+          @for (stat of overviewStats; track stat.title) {
+            <mat-card class="stat-card">
+              <mat-card-content>
+                <div class="stat-content">
+                  <div class="stat-info">
+                    <h3 class="stat-title">{{ stat.title }}</h3>
+                    <p class="stat-value">{{ stat.value | number }}</p>
+                  </div>
+                  <div class="stat-icon" [style.background]="getIconColor(stat.color)">
+                    <mat-icon>{{ stat.icon }}</mat-icon>
+                  </div>
+                </div>
+              </mat-card-content>
+            </mat-card>
+          }
+        </div>
+
+        <!-- Période Active (Card principale) -->
+        @if (dashboardStats.currentPeriod) {
+          <mat-card class="current-period-card">
+            <mat-card-header>
+              <mat-card-title>
+                <mat-icon class="active-icon">schedule</mat-icon>
+                🟢 Période Active
+              </mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="period-info-grid">
+                <div class="period-dates">
+                  <h3>{{ formatDate(dashboardStats.currentPeriod.startDate) }} - {{ formatDate(dashboardStats.currentPeriod.endDate) }}</h3>
+                  @if (dashboardStats.currentPeriod.daysRemaining !== undefined) {
+                    <p class="days-remaining">{{ dashboardStats.currentPeriod.daysRemaining }} jour(s) restant(s)</p>
+                  }
+                </div>
+                <div class="period-stats">
+                  <div class="period-stat-item">
+                    <mat-icon>local_pharmacy</mat-icon>
+                    <span>{{ dashboardStats.currentPeriod.pharmaciesInDuty || 0 }} pharmacies</span>
+                  </div>
+                  <div class="period-stat-item">
+                    <mat-icon>location_on</mat-icon>
+                    <span>{{ dashboardStats.currentPeriod.zonesCovered || 0 }} zones</span>
+                  </div>
+                  <div class="period-stat-item">
+                    <mat-icon>attach_file</mat-icon>
+                    <span>{{ dashboardStats.currentPeriod.filesUploaded || 0 }} fichiers</span>
+                  </div>
+                  <div class="period-stat-item">
+                    <mat-icon>check_circle</mat-icon>
+                    <span>{{ dashboardStats.currentPeriod.filesProcessed || 0 }} traités</span>
+                  </div>
+                </div>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        } @else {
+          <mat-card class="no-period-card">
+            <mat-card-content>
+              <div class="no-period-message">
+                <mat-icon>info</mat-icon>
+                <p>Aucune période active pour le moment</p>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Graphiques (Side by side) -->
+        <div class="charts-grid">
+          <!-- Bar Chart: Top 5 Zones -->
+          <mat-card class="chart-card">
+            <mat-card-header>
+              <mat-card-title>
+                <mat-icon>bar_chart</mat-icon>
+                Top 5 Zones par nombre de pharmacies
+              </mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              @if (dashboardStats.pharmacyStats && dashboardStats.pharmacyStats.topZones && dashboardStats.pharmacyStats.topZones.length > 0) {
+                <div class="bar-chart">
+                  @for (zone of dashboardStats.pharmacyStats.topZones; track zone.zone; let i = $index) {
+                    <div class="bar-item">
+                      <div class="bar-label">{{ zone.zone }}</div>
+                      <div class="bar-container">
+                        <div class="bar-fill" [style.width.%]="getBarPercentage(zone.count, dashboardStats.pharmacyStats.topZones!)">
+                          <span class="bar-value">{{ zone.count }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <p class="no-data">Aucune donnée disponible</p>
+              }
+            </mat-card-content>
+          </mat-card>
+
+          <!-- Pie Chart: Actif/Inactif -->
+          <mat-card class="chart-card">
+            <mat-card-header>
+              <mat-card-title>
+                <mat-icon>pie_chart</mat-icon>
+                Répartition Actif/Inactif
+              </mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              @if (dashboardStats.pharmacyStats) {
+                <div class="pie-chart-container">
+                  <div class="pie-chart">
+                    <svg class="pie-svg" viewBox="0 0 200 200">
+                      <circle cx="100" cy="100" r="80" fill="none" stroke="#e0e0e0" stroke-width="40"/>
+                      @if (getTotalPharmacies() > 0) {
+                        <circle 
+                          cx="100" 
+                          cy="100" 
+                          r="80" 
+                          fill="none" 
+                          [attr.stroke]="getPieChartColor(0)"
+                          stroke-width="40"
+                          [attr.stroke-dasharray]="getPieChartDashArray(dashboardStats.pharmacyStats.activePharmacies || 0, getTotalPharmacies())"
+                          [attr.stroke-dashoffset]="0"
+                          transform="rotate(-90 100 100)"/>
+                        <circle 
+                          cx="100" 
+                          cy="100" 
+                          r="80" 
+                          fill="none" 
+                          [attr.stroke]="getPieChartColor(1)"
+                          stroke-width="40"
+                          [attr.stroke-dasharray]="getPieChartDashArray(dashboardStats.pharmacyStats.inactivePharmacies || 0, getTotalPharmacies())"
+                          [attr.stroke-dashoffset]="getPieChartDashOffset(dashboardStats.pharmacyStats.activePharmacies || 0, getTotalPharmacies())"
+                          transform="rotate(-90 100 100)"/>
+                      }
+                    </svg>
+                  </div>
+                  <div class="pie-legend">
+                    <div class="legend-item">
+                      <div class="legend-color" [style.background]="getPieChartColor(0)"></div>
+                      <span>Actives: {{ dashboardStats.pharmacyStats.activePharmacies || 0 }}</span>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-color" [style.background]="getPieChartColor(1)"></div>
+                      <span>Inactives: {{ dashboardStats.pharmacyStats.inactivePharmacies || 0 }}</span>
+                    </div>
+                  </div>
+                </div>
+              } @else {
+                <p class="no-data">Aucune donnée disponible</p>
+              }
+            </mat-card-content>
+          </mat-card>
+        </div>
+
+        <!-- Statistiques fichiers -->
+        <mat-card class="stats-card">
+          <mat-card-header>
+            <mat-card-title>
+              <mat-icon>folder</mat-icon>
+              Statistiques de traitement des fichiers
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="file-stats-grid">
+              <div class="file-stat-item">
+                <mat-icon>insert_drive_file</mat-icon>
+                <div class="file-stat-details">
+                  <span class="file-stat-label">Total fichiers</span>
+                  <span class="file-stat-value">{{ dashboardStats.fileStats.totalFiles || 0 }}</span>
+                </div>
+              </div>
+              <div class="file-stat-item">
+                <mat-icon>hourglass_empty</mat-icon>
+                <div class="file-stat-details">
+                  <span class="file-stat-label">En attente</span>
+                  <span class="file-stat-value">{{ dashboardStats.fileStats.pendingFiles || 0 }}</span>
+                </div>
+              </div>
+              <div class="file-stat-item">
+                <mat-icon>sync</mat-icon>
+                <div class="file-stat-details">
+                  <span class="file-stat-label">En traitement</span>
+                  <span class="file-stat-value">{{ dashboardStats.fileStats.processingFiles || 0 }}</span>
+                </div>
+              </div>
+              <div class="file-stat-item">
+                <mat-icon>check_circle</mat-icon>
+                <div class="file-stat-details">
+                  <span class="file-stat-label">Traitées</span>
+                  <span class="file-stat-value">{{ dashboardStats.fileStats.completedFiles || 0 }}</span>
+                </div>
+              </div>
+              <div class="file-stat-item">
+                <mat-icon>error</mat-icon>
+                <div class="file-stat-details">
+                  <span class="file-stat-label">En erreur</span>
+                  <span class="file-stat-value">{{ dashboardStats.fileStats.failedFiles || 0 }}</span>
+                </div>
+              </div>
+              <div class="file-stat-item">
+                <mat-icon>trending_up</mat-icon>
+                <div class="file-stat-details">
+                  <span class="file-stat-label">Taux de succès</span>
+                  <span class="file-stat-value">{{ dashboardStats.fileStats.successRate || 0 }}%</span>
+                </div>
+              </div>
+            </div>
+            <div class="file-extracted-info">
+              <mat-icon>local_pharmacy</mat-icon>
+              <span>{{ dashboardStats.fileStats.totalPharmaciesExtracted || 0 }} pharmacies extraites au total</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Activité récente (Tableaux) -->
+        <div class="activity-grid">
+          <!-- 5 dernières périodes -->
+          <mat-card class="activity-card">
+            <mat-card-header>
+              <mat-card-title>
+                <mat-icon>schedule</mat-icon>
+                5 dernières périodes
+              </mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              @if (dashboardStats.recentActivity.recentPeriods && dashboardStats.recentActivity.recentPeriods.length > 0) {
+                <div class="activity-table">
+                  @for (period of dashboardStats.recentActivity.recentPeriods; track period.id) {
+                    <div class="activity-row">
+                      <div class="activity-info">
+                        <span class="activity-name">{{ formatDate(period.startDate) }} - {{ formatDate(period.endDate) }}</span>
+                        <span class="activity-meta">{{ period.dutiesCount }} garde(s)</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <p class="no-data">Aucune période récente</p>
+              }
+            </mat-card-content>
+          </mat-card>
+
+          <!-- 5 derniers fichiers -->
+          <mat-card class="activity-card">
+            <mat-card-header>
+              <mat-card-title>
+                <mat-icon>attach_file</mat-icon>
+                5 derniers fichiers
+              </mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              @if (dashboardStats.recentActivity.recentFiles && dashboardStats.recentActivity.recentFiles.length > 0) {
+                <div class="activity-table">
+                  @for (file of dashboardStats.recentActivity.recentFiles; track file.id) {
+                    <div class="activity-row">
+                      <div class="activity-info">
+                        <span class="activity-name">{{ file.fileName }}</span>
+                        <span class="activity-meta">{{ formatDate(file.uploadedAt) }}</span>
+                      </div>
+                      <mat-chip [color]="getFileStatusColor(file.status)">
+                        {{ getFileStatusLabel(file.status) }}
+                      </mat-chip>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <p class="no-data">Aucun fichier récent</p>
+              }
+            </mat-card-content>
+          </mat-card>
+
+          <!-- 5 dernières pharmacies -->
+          <mat-card class="activity-card">
+            <mat-card-header>
+              <mat-card-title>
+                <mat-icon>local_pharmacy</mat-icon>
+                5 dernières pharmacies
+              </mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              @if (dashboardStats.recentActivity.recentPharmacies && dashboardStats.recentActivity.recentPharmacies.length > 0) {
+                <div class="activity-table">
+                  @for (pharmacy of dashboardStats.recentActivity.recentPharmacies; track pharmacy.id) {
+                    <div class="activity-row">
+                      <div class="activity-info">
+                        <span class="activity-name">{{ pharmacy.name }}</span>
+                        <span class="activity-meta">{{ pharmacy.zone }} - {{ formatDate(pharmacy.createdAt) }}</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <p class="no-data">Aucune pharmacie récente</p>
+              }
+            </mat-card-content>
+          </mat-card>
+        </div>
+
+        <!-- Alertes (Notifications) -->
+        @if (dashboardStats.alerts && dashboardStats.alerts.length > 0) {
+          <mat-card class="alerts-card">
+            <mat-card-header>
+              <mat-card-title>
+                <mat-icon>notifications</mat-icon>
+                🚨 Alertes
+              </mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="alerts-list">
+                @for (alert of dashboardStats.alerts; track alert.type) {
+                  <div class="alert-item" [class]="'alert-' + alert.level.toLowerCase()">
+                    <div class="alert-icon">
+                      <mat-icon [color]="getAlertColor(alert.level)">{{ getAlertIcon(alert.level) }}</mat-icon>
+                    </div>
+                    <div class="alert-content">
+                      <span class="alert-level">{{ alert.level }}</span>
+                      <span class="alert-message">{{ alert.message }}</span>
+                      @if (alert.count !== undefined && alert.count > 0) {
+                        <span class="alert-count">({{ alert.count }})</span>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
+      }
+    </main>
+  </div>
+</div>
