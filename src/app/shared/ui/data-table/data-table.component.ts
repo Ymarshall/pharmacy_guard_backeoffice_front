@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, contentChildren, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, contentChildren, effect, input, output, signal, untracked } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { NgTemplateOutlet } from '@angular/common';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -16,6 +16,8 @@ export interface TableColumn<T> {
   key: string;
   label: string;
   sortable?: boolean;
+  /** Champ backend si différent de la clé d'affichage. */
+  sortField?: string;
   kind?: 'text' | 'status';
   value?: (row: T) => string | number | boolean | null | undefined;
 }
@@ -67,7 +69,7 @@ export class TableCellDirective {
                 @for (column of columns(); track column.key) {
                   <th [class.is-sortable]="column.sortable !== false" (click)="toggleSort(column)" scope="col">
                     {{ column.label }}
-                    @if (sortKey() === column.key) {
+                    @if (sortKey() === sortId(column)) {
                       <mat-icon>{{ sortDir() === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
                     }
                   </th>
@@ -109,6 +111,8 @@ export class DataTableComponent<T> {
   readonly columns = input.required<readonly TableColumn<T>[]>();
   readonly loading = input(false);
   readonly mode = input<'client' | 'server'>('client');
+  /** Recherche et tri renvoyés au serveur (listes avec liste blanche). */
+  readonly remoteQuery = input(false);
   readonly total = input<number | null>(null);
   readonly searchPlaceholder = input('Rechercher');
   readonly emptyTitle = input('Aucun résultat');
@@ -128,15 +132,31 @@ export class DataTableComponent<T> {
   readonly pageIndex = signal(0);
   readonly pageSize = signal(10);
 
+  constructor() {
+    effect(() => {
+      if (this.mode() !== 'server' || !this.remoteQuery()) {
+        return;
+      }
+      const payload: PageQuery = {
+        page: this.pageIndex(),
+        size: this.pageSize(),
+        search: this.search(),
+        sort: this.sortKey() ?? undefined,
+        direction: this.sortDir()
+      };
+      untracked(() => this.queryChange.emit(payload));
+    });
+  }
+
   readonly filtered = computed(() => {
-    const query = this.search();
+    const query = this.mode() === 'server' && this.remoteQuery() ? '' : this.search();
     const source = this.rows().filter(row => {
       if (!query) {
         return true;
       }
       return this.textOf()(row).toLowerCase().includes(query);
     });
-    const key = this.sortKey();
+    const key = this.mode() === 'server' && this.remoteQuery() ? null : this.sortKey();
     if (!key) {
       return source;
     }
@@ -156,8 +176,10 @@ export class DataTableComponent<T> {
 
   onSearch(event: Event): void {
     this.searchInput.set((event.target as HTMLInputElement).value);
-    if (this.mode() === 'client') {
+    if (this.mode() === 'client' || this.remoteQuery()) {
       this.pageIndex.set(0);
+    }
+    if (this.mode() === 'client') {
       this.emitQuery();
     }
   }
@@ -166,10 +188,11 @@ export class DataTableComponent<T> {
     if (column.sortable === false) {
       return;
     }
-    if (this.sortKey() === column.key) {
+    const id = this.sortId(column);
+    if (this.sortKey() === id) {
       this.sortDir.update(dir => dir === 'asc' ? 'desc' : 'asc');
     } else {
-      this.sortKey.set(column.key);
+      this.sortKey.set(id);
       this.sortDir.set('asc');
     }
     if (this.mode() === 'client') {
@@ -180,7 +203,13 @@ export class DataTableComponent<T> {
   onPage(event: PageEvent): void {
     this.pageIndex.set(event.pageIndex);
     this.pageSize.set(event.pageSize);
-    this.emitQuery();
+    if (!(this.mode() === 'server' && this.remoteQuery())) {
+      this.emitQuery();
+    }
+  }
+
+  sortId(column: TableColumn<T>): string {
+    return column.sortField || column.key;
   }
 
   track(row: T): unknown {

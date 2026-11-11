@@ -12,7 +12,7 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { formatFrDate } from '../../../shared/util/dates';
 import { httpErrorMessage } from '../../../shared/util/http-error';
-import { PageQuery } from '../../../core/api/page-query';
+import { buildSort, PageQuery } from '../../../core/api/page-query';
 
 @Component({
   selector: 'app-duty-period-list',
@@ -23,7 +23,7 @@ import { PageQuery } from '../../../core/api/page-query';
     <app-page-header title="Périodes de garde" subtitle="Préparer, vérifier et activer une semaine de garde" [crumbs]="[{label:'Accueil', link:'/dashboard'},{label:'Périodes'}]">
       <a mat-flat-button color="primary" routerLink="/duty-periods/new"><mat-icon>add</mat-icon> Nouvelle période</a>
     </app-page-header>
-    <app-data-table mode="server" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucune période" (queryChange)="onQuery($event)">
+    <app-data-table mode="server" [remoteQuery]="true" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucune période" (queryChange)="onQuery($event)">
       <ng-template appTableCell="status" let-row><app-status-badge [value]="row.status || 'DRAFT'" /></ng-template>
       <ng-template appTableCell="actions" let-row>
         <div class="pg-row-actions">
@@ -45,25 +45,31 @@ export class DutyPeriodListComponent {
   readonly total = signal(0);
   readonly page = signal(0);
   readonly size = signal(10);
+  readonly search = signal('');
+  readonly sort = signal<string | undefined>(undefined);
   readonly columns: TableColumn<DutyPeriod>[] = [
-    { key: 'start', label: 'Début', value: row => formatFrDate(row.startDate) },
-    { key: 'end', label: 'Fin', value: row => formatFrDate(row.endDate) },
-    { key: 'status', label: 'Statut', value: row => row.status || 'DRAFT' },
-    { key: 'count', label: 'Fichiers', value: row => row.duties?.length || 0 },
+    { key: 'startDate', label: 'Début', value: row => formatFrDate(row.startDate) },
+    { key: 'endDate', label: 'Fin', value: row => formatFrDate(row.endDate) },
+    { key: 'status', label: 'Statut', sortable: false, value: row => row.status || 'DRAFT' },
+    { key: 'count', label: 'Fichiers', sortable: false, value: row => row.duties?.length || 0 },
     { key: 'actions', label: 'Actions', sortable: false }
   ];
   readonly text = (row: DutyPeriod) => `${row.startDate} ${row.endDate} ${row.status || ''}`;
   constructor() { this.load(); }
   load(): void {
-    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.service.list(this.page(), this.size(), this.search(), this.sort()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
       error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
     });
   }
   onQuery(query: PageQuery): void {
-    const page = query.page ?? 0; const size = query.size ?? 10;
-    if (page === this.page() && size === this.size()) return;
-    this.page.set(page); this.size.set(size); this.load();
+    const page = query.page ?? 0;
+    const size = query.size ?? 10;
+    const search = query.search ?? '';
+    const sort = buildSort(query, { startDate: 'startDate', endDate: 'endDate' });
+    if (page === this.page() && size === this.size() && search === this.search() && sort === this.sort()) return;
+    this.page.set(page); this.size.set(size); this.search.set(search); this.sort.set(sort);
+    this.load();
   }
   remove(row: DutyPeriod): void {
     this.confirm.ask({ title: 'Supprimer la période', message: 'Les gardes liées seront retirées avec la période.', confirmText: 'Supprimer' }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(ok => {

@@ -7,11 +7,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatInputModule } from '@angular/material/input';
+import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatDialog } from '@angular/material/dialog';
+import { Subject, of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, switchMap, takeUntil } from 'rxjs/operators';
 import { DutyPeriod } from '../../core/models/duty-period.model';
-import { Pharmacy } from '../../core/models/pharmacy.model';
 import { DutyPeriodService } from '../../core/services/reference.service';
-import { PharmacyService } from '../../core/services/pharmacy.service';
+import { PharmacySearchHit, PharmacyService } from '../../core/services/pharmacy.service';
 import { DutyImportService, ImportPreview, ReviewLine, matchStatusLabel } from '../../core/services/duty-import.service';
 import { PageHeaderComponent } from '../../shared/ui/page-header/page-header.component';
 import { FileUploaderComponent, StagedFile } from '../../shared/ui/file-uploader/file-uploader.component';
@@ -21,13 +23,13 @@ import { StatusBadgeComponent } from '../../shared/ui/status-badge/status-badge.
 import { NotifyService } from '../../shared/notify/notify.service';
 import { formatFrDate } from '../../shared/util/dates';
 import { httpErrorMessage } from '../../shared/util/http-error';
-import { QuickPharmacyDialogComponent } from './quick-pharmacy-dialog.component';
+import { PharmacyDraft, QuickPharmacyDialogComponent } from './quick-pharmacy-dialog.component';
 
 @Component({
   selector: 'app-poster-import',
   standalone: true,
   imports: [
-    FormsModule, RouterLink, MatButtonModule, MatIconModule, MatFormFieldModule, MatSelectModule, MatInputModule,
+    FormsModule, RouterLink, MatButtonModule, MatIconModule, MatFormFieldModule, MatSelectModule, MatInputModule, MatAutocompleteModule,
     PageHeaderComponent, FileUploaderComponent, SkeletonTableComponent, EmptyStateComponent, StatusBadgeComponent
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,6 +54,9 @@ import { QuickPharmacyDialogComponent } from './quick-pharmacy-dialog.component'
         <button mat-flat-button color="primary" type="button" [disabled]="!canAnalyze()" (click)="analyze()">
           {{ busy() ? (stage() || 'Analyse…') : 'Analyser les affiches' }}
         </button>
+        @if (busy()) {
+          <button mat-stroked-button type="button" (click)="cancel()">Annuler</button>
+        }
       </div>
       @if (busy()) { <app-skeleton-table [rows]="4" [columns]="5" /> }
     } @else {
@@ -89,8 +94,17 @@ import { QuickPharmacyDialogComponent } from './quick-pharmacy-dialog.component'
                     <td><app-status-badge [value]="line.matchStatus" /></td>
                     <td>{{ percent(line.confidence) }} %</td>
                     <td>
-                      <input matInput placeholder="Filtrer" [ngModel]="line.filter" (ngModelChange)="filterLine(line, $event)" />
                       <mat-form-field appearance="outline" subscriptSizing="dynamic" class="pg-field">
+                        <mat-label>Rechercher</mat-label>
+                        <input matInput [matAutocomplete]="auto" placeholder="Nom, ville, téléphone" [ngModel]="line.filter" (ngModelChange)="lookup(line, $event)" />
+                        <mat-autocomplete #auto="matAutocomplete" (optionSelected)="pick(line, $event)">
+                          @for (hit of hits()[line.key] || []; track hit.id) {
+                            <mat-option [value]="hit">{{ hit.name }} · {{ hit.commune || hit.city || '—' }}</mat-option>
+                          }
+                        </mat-autocomplete>
+                      </mat-form-field>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="pg-field">
+                        <mat-label>Suggestions</mat-label>
                         <mat-select [ngModel]="line.pharmacyId" (ngModelChange)="assign(line, $event)">
                           <mat-option [value]="null">Non rattachée</mat-option>
                           @for (option of options(line); track option.id) {
@@ -98,7 +112,9 @@ import { QuickPharmacyDialogComponent } from './quick-pharmacy-dialog.component'
                           }
                         </mat-select>
                       </mat-form-field>
-                      @if (line.matchStatus === 'NOT_FOUND') {
+                      @if (line.createPharmacy) {
+                        <div class="pg-muted">Création à la validation : {{ line.createName }}</div>
+                      } @else if (line.pharmacyId == null) {
                         <button mat-button type="button" (click)="createPharmacy(line)">Créer la pharmacie</button>
                       }
                     </td>
@@ -125,8 +141,10 @@ export class PosterImportComponent {
   private readonly dialog = inject(MatDialog);
   private readonly destroyRef = inject(DestroyRef);
   private readonly route = inject(ActivatedRoute);
+  private readonly cancel$ = new Subject<void>();
+  private readonly lookup$ = new Subject<{ key: string; q: string }>();
   readonly periods = signal<DutyPeriod[]>([]);
-  readonly pharmacies = signal<Pharmacy[]>([]);
+  readonly hits = signal<Record<string, PharmacySearchHit[]>>({});
   readonly periodId = signal<number | null>(null);
   readonly files = signal<StagedFile[]>([]);
   readonly progress = signal<number | null>(null);
@@ -153,10 +171,17 @@ export class PosterImportComponent {
       },
       error: error => { const message = httpErrorMessage(error, 'Périodes indisponibles'); if (message) this.notify.error(message); }
     });
-    this.pharmaciesApi.getAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: rows => this.pharmacies.set(rows || []),
-      error: () => this.pharmacies.set([])
-    });
+    this.lookup$.pipe(
+      debounceTime(300),
+      distinctUntilChanged((left, right) => left.key === right.key && left.q === right.q),
+      switchMap(query => query.q.length < 2
+        ? of({ key: query.key, rows: [] as PharmacySearchHit[] })
+        : this.pharmaciesApi.search(query.q).pipe(
+          map(page => ({ key: query.key, rows: page.content || [] })),
+          catchError(() => of({ key: query.key, rows: [] as PharmacySearchHit[] }))
+        )),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(result => this.hits.update(current => ({ ...current, [result.key]: result.rows })));
   }
 
   canAnalyze(): boolean {
@@ -166,13 +191,6 @@ export class PosterImportComponent {
   percent(value: number): number { return Math.round(value * 100); }
 
   options(line: ReviewLine): Array<{ id: number; label: string }> {
-    const query = line.filter.trim().toLowerCase();
-    if (query) {
-      return this.pharmacies()
-        .filter(pharmacy => pharmacy.name.toLowerCase().includes(query))
-        .slice(0, 20)
-        .map(pharmacy => ({ id: pharmacy.id!, label: pharmacy.name }));
-    }
     const seen = new Set<number>();
     const options: Array<{ id: number; label: string }> = [];
     const push = (id: number | null | undefined, name: string | null | undefined, score?: number) => {
@@ -185,9 +203,23 @@ export class PosterImportComponent {
     return options;
   }
 
-  filterLine(line: ReviewLine, value: string): void {
+  lookup(line: ReviewLine, value: string): void {
     line.filter = value;
+    this.lookup$.next({ key: line.key, q: value.trim() });
     this.preview.set({ ...this.preview()! });
+  }
+
+  pick(line: ReviewLine, event: MatAutocompleteSelectedEvent): void {
+    const hit = event.option.value as PharmacySearchHit;
+    line.filter = hit.name;
+    this.assign(line, hit.id);
+  }
+
+  cancel(): void {
+    this.cancel$.next();
+    this.busy.set(false);
+    this.progress.set(null);
+    this.stage.set('');
   }
 
   assign(line: ReviewLine, pharmacyId: number | null): void {
@@ -214,7 +246,7 @@ export class PosterImportComponent {
     this.busy.set(true);
     this.progress.set(0);
     this.stage.set('Envoi des affiches…');
-    this.importer.analyze(this.files().map(item => item.file), periodId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.importer.analyze(this.files().map(item => item.file), periodId).pipe(takeUntil(this.cancel$), takeUntilDestroyed(this.destroyRef)).subscribe({
       next: event => {
         if (event.type === 'upload') {
           this.progress.set(event.progress);
@@ -222,7 +254,7 @@ export class PosterImportComponent {
         }
         if (event.type === 'previewing') {
           this.progress.set(null);
-          this.stage.set(`Prévisualisation ${event.index + 1}/${event.total} · ${event.fileName}`);
+          this.stage.set(`${event.message} · ${event.index + 1}/${event.total} · ${event.fileName}`);
         }
         if (event.type === 'preview') {
           this.preview.set(event.preview);
@@ -242,15 +274,21 @@ export class PosterImportComponent {
   createPharmacy(line: ReviewLine): void {
     this.dialog.open(QuickPharmacyDialogComponent, {
       width: '480px',
-      data: { name: line.extractedName, zone: line.zone }
-    }).afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(created => {
-      if (!created?.id) return;
-      this.pharmacies.update(rows => [...rows, created]);
-      line.pharmacyId = created.id;
-      line.createPharmacy = false;
+      data: { name: line.extractedName, zone: line.zone, phone: line.phoneNumbers }
+    }).afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((draft: PharmacyDraft | undefined) => {
+      if (!draft) return;
+      line.createPharmacy = true;
+      line.createName = draft.name;
+      line.city = draft.city;
+      line.commune = draft.commune;
+      line.phone = draft.phone;
+      line.description = draft.description;
+      line.coordinates = draft.coordinates;
+      line.pharmacyId = null;
       line.skip = false;
+      line.filter = draft.name;
       this.preview.set({ ...this.preview()! });
-      this.notify.success(`${created.name} ajoutée au référentiel`);
+      this.notify.success(`${draft.name} sera créée à la validation`);
     });
   }
 

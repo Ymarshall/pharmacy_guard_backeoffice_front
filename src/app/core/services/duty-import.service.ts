@@ -1,7 +1,7 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, concat, from, of, throwError } from 'rxjs';
-import { concatMap, map, toArray } from 'rxjs/operators';
+import { Observable, concat, from, of, throwError, timer } from 'rxjs';
+import { concatMap, map, switchMap, takeWhile, toArray } from 'rxjs/operators';
 import { ApiClient } from '../api/api-client';
 import { DutyService } from './duty.service';
 
@@ -51,9 +51,22 @@ export interface ImportLineDecision {
   pharmacistName?: string;
   phoneNumbers?: string;
   location?: string;
+  city?: string;
+  commune?: string;
+  phone?: string;
+  description?: string;
+  coordinates?: string;
   pharmacyId: number | null;
   createPharmacy: boolean;
   skip: boolean;
+}
+
+export interface DutyJob {
+  jobId: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  message?: string | null;
+  jobType?: 'PREVIEW' | 'PROCESS';
+  preview?: ImportPreviewDto | null;
 }
 
 export interface ImportConfirmResult {
@@ -85,6 +98,12 @@ export interface ReviewLine {
   createPharmacy: boolean;
   skip: boolean;
   filter: string;
+  city?: string;
+  commune?: string;
+  phone?: string;
+  description?: string;
+  coordinates?: string;
+  createName?: string;
 }
 
 export interface ImportPreview {
@@ -98,7 +117,7 @@ export interface ImportPreview {
 
 export type ImportEvent =
   | { type: 'upload'; progress: number }
-  | { type: 'previewing'; fileName: string; index: number; total: number }
+  | { type: 'previewing'; fileName: string; index: number; total: number; message: string }
   | { type: 'preview'; preview: ImportPreview };
 
 @Injectable({ providedIn: 'root' })
@@ -108,8 +127,8 @@ export class DutyImportService {
   private readonly duties = inject(DutyService);
 
   /**
-   * Upload, puis POST /api/duty-files/{id}/preview pour chaque fichier.
-   * Un échec de prévisualisation remonte tel quel : aucune garde n'est créée.
+   * Upload, puis POST /api/duty-files/{id}/preview-async et polling du job.
+   * 503, 422 ou un job FAILED remontent le message ApiError. Aucune garde n'est créée.
    */
   analyze(files: File[], dutyPeriodId: number): Observable<ImportEvent> {
     return this.duties.uploadMultipleWithProgress(files, dutyPeriodId).pipe(
@@ -126,9 +145,12 @@ export class DutyImportService {
           concatMap((file, index) => {
             const fileName = file.fileName || file.name || 'affiche';
             return concat(
-              of({ type: 'previewing', fileName, index, total: uploaded.length } as ImportEvent),
-              this.preview(file.id!).pipe(map(body => {
-                collected.push({ body, fileName });
+              of({ type: 'previewing', fileName, index, total: uploaded.length, message: 'Prévisualisation en file' } as ImportEvent),
+              this.followPreview(file.id!).pipe(map(item => {
+                if (item.kind === 'status') {
+                  return { type: 'previewing', fileName, index, total: uploaded.length, message: item.message } as ImportEvent;
+                }
+                collected.push({ body: item.body, fileName });
                 return collected.length === uploaded.length
                   ? { type: 'preview', preview: mergePreviews(dutyPeriodId, collected) } as ImportEvent
                   : null;
@@ -141,8 +163,25 @@ export class DutyImportService {
     );
   }
 
-  preview(dutyFileId: number): Observable<ImportPreviewDto> {
-    return this.http.post<ImportPreviewDto>(this.api.url(`/duty-files/${dutyFileId}/preview`), {});
+  private followPreview(dutyFileId: number): Observable<{ kind: 'status'; message: string } | { kind: 'done'; body: ImportPreviewDto }> {
+    return this.http.post<DutyJob>(this.api.url(`/duty-files/${dutyFileId}/preview-async`), {}).pipe(
+      switchMap(job => timer(0, 700).pipe(
+        switchMap(() => this.http.get<DutyJob>(this.api.url(`/duty-files/jobs/${job.jobId}`))),
+        takeWhile(current => current.status === 'PENDING' || current.status === 'RUNNING', true),
+        switchMap(current => {
+          if (current.status === 'FAILED' || (current.status === 'COMPLETED' && !current.preview)) {
+            return throwError(() => new HttpErrorResponse({
+              status: 503,
+              error: { statusCode: 503, status: 'SERVICE_UNAVAILABLE', message: current.message || 'Prévisualisation impossible' }
+            }));
+          }
+          if (current.status === 'COMPLETED' && current.preview) {
+            return of({ kind: 'done' as const, body: current.preview });
+          }
+          return of({ kind: 'status' as const, message: current.message || 'Prévisualisation en cours' });
+        })
+      ))
+    );
   }
 
   confirm(lines: ReviewLine[]): Observable<ImportConfirmResult> {
@@ -212,11 +251,16 @@ export function toReviewLine(dutyFileId: number, fileName: string, line: ImportP
 
 function toDecision(line: ReviewLine): ImportLineDecision {
   return {
-    pharmacyName: line.extractedName,
+    pharmacyName: (line.createName || line.extractedName).toUpperCase(),
     zone: line.zone,
     pharmacistName: line.pharmacistName,
     phoneNumbers: line.phoneNumbers,
     location: line.location,
+    city: line.city,
+    commune: line.commune,
+    phone: line.phone,
+    description: line.description,
+    coordinates: line.coordinates || undefined,
     pharmacyId: line.skip ? null : line.pharmacyId,
     createPharmacy: !line.skip && line.createPharmacy && line.pharmacyId == null,
     skip: line.skip

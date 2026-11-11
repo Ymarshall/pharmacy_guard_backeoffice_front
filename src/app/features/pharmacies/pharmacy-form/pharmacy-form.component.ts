@@ -150,7 +150,14 @@ export class PharmacyFormComponent {
       this.loading.set(true);
       this.pharmacies.getById(this.pharmacyId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
         next: pharmacy => {
-          this.form.patchValue({ ...pharmacy, pharmacistName: pharmacy.pharmacistName || '', phone2: pharmacy.phone2 || '', description: pharmacy.description || '', photo: pharmacy.photo || '' });
+          this.form.patchValue({
+            ...pharmacy,
+            pharmacistName: pharmacy.pharmacistName || '',
+            phone2: pharmacy.phone2 || '',
+            description: pharmacy.description || '',
+            photo: pharmacy.photo || '',
+            location: pharmacy.location ?? ''
+          });
           this.selected.set(pharmacy.assurances?.map(item => item.id) || pharmacy.assuranceIds || []);
           this.loading.set(false);
         },

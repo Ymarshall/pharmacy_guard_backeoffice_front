@@ -40,7 +40,7 @@ export class ZoneService {
 export class ClientService {
   private readonly api = inject(ApiClient);
   getAll(query?: PageQuery): Observable<Client[]> { return this.api.get('/clients', query); }
-  list(page = 0, size = 10): Observable<PageResult<Client>> { return this.api.get('/clients', { page, size }); }
+  list(page = 0, size = 10, search?: string, sort?: string): Observable<PageResult<Client>> { return this.api.get('/clients', { page, size, search, sort }); }
   getById(id: number): Observable<Client> { return this.api.get(`/clients/${id}`); }
   update(id: number, body: ClientUpdateRequest): Observable<Client> { return this.api.put(`/clients/${id}`, body); }
   updateStatus(id: number, status: ClientStatusRequest): Observable<Client> { return this.api.put(`/clients/${id}/status`, status); }
@@ -52,7 +52,7 @@ export class ClientService {
 export class UserService {
   private readonly api = inject(ApiClient);
   getAll(query?: PageQuery): Observable<User[]> { return this.api.get('/users', query); }
-  list(page = 0, size = 10): Observable<PageResult<User>> { return this.api.get('/users', { page, size }); }
+  list(page = 0, size = 10, search?: string, sort?: string): Observable<PageResult<User>> { return this.api.get('/users', { page, size, search, sort }); }
   getById(id: number): Observable<User> { return this.api.get(`/users/${id}`); }
   create(body: UserCreateRequest): Observable<User> { return this.api.post('/users', body); }
   update(id: number, body: UserUpdateRequest): Observable<User> { return this.api.put(`/users/${id}`, body); }
@@ -63,7 +63,7 @@ export class UserService {
 export class DutyPeriodService {
   private readonly api = inject(ApiClient);
   getAll(query?: PageQuery): Observable<DutyPeriod[]> { return this.api.get('/duty-periods', query); }
-  list(page = 0, size = 10): Observable<PageResult<DutyPeriod>> { return this.api.get('/duty-periods', { page, size }); }
+  list(page = 0, size = 10, search?: string, sort?: string): Observable<PageResult<DutyPeriod>> { return this.api.get('/duty-periods', { page, size, search, sort }); }
   getById(id: number): Observable<DutyPeriod> { return this.api.get(`/duty-periods/${id}`); }
   getCurrent(): Observable<DutyPeriod> { return this.api.get('/duty-periods/current'); }
   getAllCurrent(): Observable<DutyPeriod[]> { return this.api.get('/duty-periods/current/all'); }

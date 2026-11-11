@@ -129,6 +129,55 @@ function pageOf(url, items) {
   };
 }
 
+function listed(url, items, whitelist, searchFields) {
+  const queried = ['page', 'size', 'search', 'sort', 'limit'].some(key => url.searchParams.has(key));
+  if (!queried) {
+    return { page: items };
+  }
+  const sort = url.searchParams.get('sort');
+  if (sort) {
+    const field = sort.split(',')[0];
+    if (!whitelist.includes(field)) {
+      return { error: apiError(400, 'BAD_REQUEST', `Tri non autorisé : ${field}`, url.pathname) };
+    }
+  }
+  let rows = items.slice();
+  const search = (url.searchParams.get('search') || '').trim().toLowerCase();
+  if (search) {
+    rows = rows.filter(item => searchFields.some(field => String(item[field] ?? '').toLowerCase().includes(search)));
+  }
+  if (sort) {
+    const [field, direction] = sort.split(',');
+    const factor = direction === 'desc' ? -1 : 1;
+    rows.sort((left, right) => String(left[field] ?? '').localeCompare(String(right[field] ?? ''), 'fr', { numeric: true }) * factor);
+  }
+  const limit = url.searchParams.get('limit');
+  const page = Number(url.searchParams.get('page') ?? 0);
+  const size = Number(limit ?? url.searchParams.get('size') ?? 20);
+  const start = Math.max(0, page) * size;
+  return {
+    page: {
+      content: rows.slice(start, start + size),
+      page,
+      size,
+      totalElements: rows.length,
+      totalPages: Math.max(1, Math.ceil(rows.length / Math.max(size, 1)))
+    }
+  };
+}
+
+const jobs = new Map();
+
+function demoPreview(id, file) {
+  const alt = (pharmacyId, name, city, commune, score) => ({ pharmacyId, name, city, commune, phone: '', score });
+  const lines = [
+    { lineIndex: 0, zone: 'Cocody', pharmacyName: 'PHARMACIE DU PLATEAU', normalizedName: 'PHARMACIE DU PLATEAU', pharmacistName: 'Dr Awa Koné', phoneNumbers: '+2252720201001', location: 'Plateau', matchStatus: 'MATCHED', confidence: 0.97, suggestedPharmacyId: 1, suggestedPharmacyName: 'PHARMACIE DU PLATEAU', suggestedCity: 'Abidjan', dutyAlreadyExists: false, alternatives: [alt(1, 'PHARMACIE DU PLATEAU', 'Abidjan', 'Cocody', 0.97), alt(5, 'PHARMACIE LES OSCARS', 'Abidjan', 'Cocody', 0.61)] },
+    { lineIndex: 1, zone: 'Marcory', pharmacyName: 'PHARMACIE DE LA PAI', normalizedName: 'PHARMACIE DE LA PAIX', pharmacistName: 'Dr Yao', phoneNumbers: '', location: '', matchStatus: 'AMBIGUOUS', confidence: 0.86, suggestedPharmacyId: 2, suggestedPharmacyName: 'PHARMACIE DE LA PAIX', suggestedCity: 'Abidjan', dutyAlreadyExists: false, alternatives: [alt(2, 'PHARMACIE DE LA PAIX', 'Abidjan', 'Marcory', 0.86), alt(4, 'PHARMACIE DU MARCHE', 'Abidjan', 'Treichville', 0.74), alt(6, 'PHARMACIE DE L’INDENIE', 'Abidjan', 'Abobo', 0.58)] },
+    { lineIndex: 2, zone: 'Bingerville', pharmacyName: 'PHARMACIE NOUVELLE DE BINGERVILLE', normalizedName: 'PHARMACIE NOUVELLE DE BINGERVILLE', pharmacistName: '', phoneNumbers: '0708091011', location: null, matchStatus: 'NOT_FOUND', confidence: 0.41, suggestedPharmacyId: null, suggestedPharmacyName: null, suggestedCity: null, dutyAlreadyExists: false, alternatives: [alt(6, 'PHARMACIE DE L’INDENIE', 'Abidjan', 'Abobo', 0.58)] }
+  ];
+  return { dutyFileId: id, dutyPeriodId: file.dutyPeriodId, contentHash: 'demo', alreadyProcessed: false, linesExtracted: lines.length, matched: 1, ambiguous: 1, notFound: 1, duplicates: 0, lines };
+}
+
 function apiError(statusCode, status, message, path) {
   return { timestamp: new Date().toISOString(), statusCode, status, error: message, message, path };
 }
@@ -299,7 +348,21 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    if (path === '/api/pharmacies' && method === 'GET') return send(res, 200, pageOf(url, pharmacies));
+    if (path === '/api/pharmacies/search' && method === 'GET') {
+      const q = (url.searchParams.get('q') || '').trim().toLowerCase();
+      const city = (url.searchParams.get('city') || '').trim().toLowerCase();
+      const hits = pharmacies
+        .filter(item => (!q || `${item.name} ${item.phone1 || ''} ${item.commune || ''}`.toLowerCase().includes(q)) && (!city || String(item.city || '').toLowerCase().includes(city)))
+        .map(item => ({ id: item.id, name: item.name, city: item.city, commune: item.commune, district: item.district, phone: item.phone1, score: q && item.name.toLowerCase().includes(q) ? 0.92 : 0.55 }));
+      const page = Number(url.searchParams.get('page') ?? 0);
+      const size = Math.min(Number(url.searchParams.get('limit') ?? 20), 50);
+      return send(res, 200, { content: hits.slice(page * size, page * size + size), page, size, totalElements: hits.length, totalPages: Math.max(1, Math.ceil(hits.length / Math.max(size, 1))) });
+    }
+    if (path === '/api/pharmacies' && method === 'GET') {
+      const result = listed(url, pharmacies, ['id', 'name', 'city', 'commune', 'statut'], ['name', 'city', 'commune', 'district', 'phone1']);
+      if (result.error) return send(res, 400, result.error);
+      return send(res, 200, result.page);
+    }
     if (path === '/api/pharmacies' && method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString() || '{}');
       const created = { ...body, id: ++seq, name: String(body.name || '').toUpperCase(), assurances: assurances.filter(a => (body.assuranceIds || []).includes(a.id)) };
@@ -398,7 +461,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/clients' && method === 'GET') return send(res, 200, pageOf(url, clients));
+    if (path === '/api/clients' && method === 'GET') {
+      const result = listed(url, clients, ['id', 'phone', 'firstName', 'lastName', 'email'], ['phone', 'firstName', 'lastName', 'email']);
+      if (result.error) return send(res, 400, result.error);
+      return send(res, 200, result.page);
+    }
     const clientAction = path.match(/^\/api\/clients\/(\d+)(?:\/(status|activate|deactivate))?$/);
     if (clientAction) {
       const id = Number(clientAction[1]);
@@ -425,7 +492,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/users' && method === 'GET') return send(res, 200, pageOf(url, users));
+    if (path === '/api/users' && method === 'GET') {
+      const result = listed(url, users, ['id', 'email', 'firstName', 'lastName', 'role'], ['email', 'firstName', 'lastName', 'role']);
+      if (result.error) return send(res, 400, result.error);
+      return send(res, 200, result.page);
+    }
     if (path === '/api/users' && method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString() || '{}');
       const created = { id: ++seq, email: body.email, firstName: body.firstName, lastName: body.lastName, role: 'OPERATOR' };
@@ -450,7 +521,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/duty-periods' && method === 'GET') return send(res, 200, pageOf(url, periods.map(syncPeriodDuties)));
+    if (path === '/api/duty-periods' && method === 'GET') {
+      const result = listed(url, periods.map(syncPeriodDuties), ['id', 'startDate', 'endDate', 'isCurrent'], ['startDate', 'endDate', 'status']);
+      if (result.error) return send(res, 400, result.error);
+      return send(res, 200, result.page);
+    }
     if (path === '/api/duty-periods/current' && method === 'GET') return send(res, 200, syncPeriodDuties(periods.find(p => p.status === 'ACTIVE')));
     if (path === '/api/duty-periods/current/all' && method === 'GET') return send(res, 200, periods.filter(p => p.status === 'ACTIVE').map(syncPeriodDuties));
     if (path === '/api/duty-periods' && method === 'POST') {
@@ -522,19 +597,32 @@ const server = http.createServer(async (req, res) => {
       dutyFiles.push(created);
       return send(res, 201, created);
     }
+    const previewAsync = path.match(/^\/api\/duty-files\/(\d+)\/preview-async$/);
+    if (previewAsync && method === 'POST') {
+      await readBody(req);
+      const id = Number(previewAsync[1]);
+      const file = dutyFiles.find(item => item.id === id);
+      if (!file) return send(res, 404, apiError(404, 'NOT_FOUND', 'Fichier de garde introuvable', path));
+      const jobId = `job-${++seq}`;
+      jobs.set(jobId, { readyAt: Date.now() + 900, preview: demoPreview(id, file) });
+      return send(res, 202, { jobId, status: 'PENDING', message: 'Prévisualisation en file', jobType: 'PREVIEW', result: null, preview: null });
+    }
+    const jobMatch = path.match(/^\/api\/duty-files\/jobs\/([^/]+)$/);
+    if (jobMatch && method === 'GET') {
+      const job = jobs.get(jobMatch[1]);
+      if (!job) return send(res, 404, apiError(404, 'NOT_FOUND', 'Tâche introuvable', path));
+      if (Date.now() < job.readyAt) {
+        return send(res, 200, { jobId: jobMatch[1], status: 'RUNNING', message: 'Prévisualisation en cours', jobType: 'PREVIEW', result: null, preview: null });
+      }
+      return send(res, 200, { jobId: jobMatch[1], status: 'COMPLETED', message: 'Prévisualisation terminée', jobType: 'PREVIEW', result: null, preview: job.preview });
+    }
     const previewMatch = path.match(/^\/api\/duty-files\/(\d+)\/preview$/);
     if (previewMatch && method === 'POST') {
       await readBody(req);
       const id = Number(previewMatch[1]);
       const file = dutyFiles.find(item => item.id === id);
       if (!file) return send(res, 404, apiError(404, 'NOT_FOUND', 'Fichier de garde introuvable', path));
-      const alt = (pharmacyId, name, city, commune, score) => ({ pharmacyId, name, city, commune, phone: '', score });
-      const lines = [
-        { lineIndex: 0, zone: 'Cocody', pharmacyName: 'PHARMACIE DU PLATEAU', normalizedName: 'PHARMACIE DU PLATEAU', pharmacistName: 'Dr Awa Koné', phoneNumbers: '+2252720201001', location: 'Plateau', matchStatus: 'MATCHED', confidence: 0.97, suggestedPharmacyId: 1, suggestedPharmacyName: 'PHARMACIE DU PLATEAU', suggestedCity: 'Abidjan', dutyAlreadyExists: false, alternatives: [alt(1, 'PHARMACIE DU PLATEAU', 'Abidjan', 'Cocody', 0.97), alt(5, 'PHARMACIE LES OSCARS', 'Abidjan', 'Cocody', 0.61)] },
-        { lineIndex: 1, zone: 'Marcory', pharmacyName: 'PHARMACIE DE LA PAI', normalizedName: 'PHARMACIE DE LA PAIX', pharmacistName: 'Dr Yao', phoneNumbers: '', location: '', matchStatus: 'AMBIGUOUS', confidence: 0.86, suggestedPharmacyId: 2, suggestedPharmacyName: 'PHARMACIE DE LA PAIX', suggestedCity: 'Abidjan', dutyAlreadyExists: false, alternatives: [alt(2, 'PHARMACIE DE LA PAIX', 'Abidjan', 'Marcory', 0.86), alt(4, 'PHARMACIE DU MARCHE', 'Abidjan', 'Treichville', 0.74), alt(6, 'PHARMACIE DE L’INDENIE', 'Abidjan', 'Abobo', 0.58)] },
-        { lineIndex: 2, zone: 'Bingerville', pharmacyName: 'PHARMACIE NOUVELLE DE BINGERVILLE', normalizedName: 'PHARMACIE NOUVELLE DE BINGERVILLE', pharmacistName: '', phoneNumbers: '', location: '', matchStatus: 'NOT_FOUND', confidence: 0.41, suggestedPharmacyId: null, suggestedPharmacyName: null, suggestedCity: null, dutyAlreadyExists: false, alternatives: [alt(6, 'PHARMACIE DE L’INDENIE', 'Abidjan', 'Abobo', 0.58)] }
-      ];
-      return send(res, 200, { dutyFileId: id, dutyPeriodId: file.dutyPeriodId, contentHash: 'demo', alreadyProcessed: false, linesExtracted: lines.length, matched: 1, ambiguous: 1, notFound: 1, duplicates: 0, lines });
+      return send(res, 200, demoPreview(id, file));
     }
     const confirmMatch = path.match(/^\/api\/duty-files\/(\d+)\/confirm$/);
     if (confirmMatch && method === 'POST') {
@@ -542,9 +630,29 @@ const server = http.createServer(async (req, res) => {
       const file = dutyFiles.find(item => item.id === id);
       if (!file) return send(res, 404, apiError(404, 'NOT_FOUND', 'Fichier de garde introuvable', path));
       const body = JSON.parse((await readBody(req)).toString() || '{}');
-      let dutiesCreated = 0, skipped = 0, duplicates = 0, errors = 0;
+      let dutiesCreated = 0, pharmaciesCreated = 0, skipped = 0, duplicates = 0, errors = 0;
       for (const line of body.lines || []) {
         if (line.skip) { skipped++; continue; }
+        if (line.createPharmacy && !line.pharmacyId) {
+          const phone = String(line.phone || String(line.phoneNumbers || '').split(/[;,]/)[0] || '');
+          const digits = phone.replace(/\D/g, '');
+          if (digits.length < 8 || !(line.city || line.zone) || !(line.commune || line.zone)) { errors++; continue; }
+          const created = {
+            id: ++seq,
+            name: String(line.pharmacyName || '').toUpperCase(),
+            city: line.city || line.zone,
+            commune: line.commune || line.zone,
+            district: line.commune || line.zone,
+            phone1: phone,
+            email: '',
+            location: line.coordinates || null,
+            statut: 'ACTIF',
+            pharmacistName: line.pharmacistName || ''
+          };
+          pharmacies.push(created);
+          line.pharmacyId = created.id;
+          pharmaciesCreated++;
+        }
         if (!line.pharmacyId) { errors++; continue; }
         const exists = duties.some(duty => duty.dutyPeriodId === file.dutyPeriodId && duty.pharmacyId === line.pharmacyId);
         if (exists) { duplicates++; continue; }
@@ -553,7 +661,7 @@ const server = http.createServer(async (req, res) => {
         dutiesCreated++;
       }
       file.status = errors && !dutiesCreated ? 'FAILED' : 'COMPLETED';
-      return send(res, 200, { dutiesCreated, pharmaciesCreated: 0, skipped, duplicates, errors, lines: [] });
+      return send(res, 200, { dutiesCreated, pharmaciesCreated, skipped, duplicates, errors, lines: [] });
     }
     const processMatch = path.match(/^\/api\/duty-files\/(\d+)\/process$/);
     if (processMatch && method === 'POST') {

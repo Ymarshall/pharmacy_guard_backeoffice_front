@@ -11,7 +11,7 @@ import { DataTableComponent, TableCellDirective, TableColumn } from '../../../sh
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { httpErrorMessage } from '../../../shared/util/http-error';
-import { PageQuery } from '../../../core/api/page-query';
+import { buildSort, PageQuery } from '../../../core/api/page-query';
 import { PharmacyReviewsDialogComponent } from '../pharmacy-reviews-dialog/pharmacy-reviews-dialog.component';
 
 @Component({
@@ -23,7 +23,7 @@ import { PharmacyReviewsDialogComponent } from '../pharmacy-reviews-dialog/pharm
     <app-page-header title="Pharmacies" subtitle="Référentiel des officines" [crumbs]="[{label:'Accueil', link:'/dashboard'}, {label:'Pharmacies'}]">
       <a mat-flat-button color="primary" routerLink="/pharmacies/new"><mat-icon>add</mat-icon> Nouvelle pharmacie</a>
     </app-page-header>
-    <app-data-table mode="server" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" emptyTitle="Aucune pharmacie" emptyHint="Ajoutez la première officine du référentiel." [textOf]="textOf" (queryChange)="onQuery($event)">
+    <app-data-table mode="server" [remoteQuery]="true" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" emptyTitle="Aucune pharmacie" emptyHint="Ajoutez la première officine du référentiel." [textOf]="textOf" (queryChange)="onQuery($event)">
       <ng-template appTableCell="statut" let-row>
         <span class="pg-badge" [attr.data-status]="row.statut">{{ row.statut === 'ACTIF' ? 'Actif' : 'Inactif' }}</span>
       </ng-template>
@@ -49,13 +49,16 @@ export class PharmacyListComponent {
   readonly total = signal(0);
   readonly page = signal(0);
   readonly size = signal(10);
+  readonly search = signal('');
+  readonly sort = signal<string | undefined>(undefined);
+  private readonly sortFields = { name: 'name', city: 'city', commune: 'commune', statut: 'statut' };
   readonly columns: TableColumn<Pharmacy>[] = [
     { key: 'name', label: 'Nom', value: row => row.name },
     { key: 'city', label: 'Ville', value: row => row.city },
     { key: 'commune', label: 'Commune', value: row => row.commune },
-    { key: 'phone1', label: 'Téléphone', value: row => row.phone1 },
-    { key: 'email', label: 'E-mail', value: row => row.email },
-    { key: 'rating', label: 'Note', value: row => row.averageRating ? `${row.averageRating.toFixed(1)} (${row.totalReviews || 0})` : '—' },
+    { key: 'phone1', label: 'Téléphone', sortable: false, value: row => row.phone1 },
+    { key: 'email', label: 'E-mail', sortable: false, value: row => row.email },
+    { key: 'rating', label: 'Note', sortable: false, value: row => row.averageRating ? `${row.averageRating.toFixed(1)} (${row.totalReviews || 0})` : '—' },
     { key: 'statut', label: 'Statut', kind: 'status', value: row => row.statut },
     { key: 'actions', label: 'Actions', sortable: false }
   ];
@@ -65,7 +68,7 @@ export class PharmacyListComponent {
 
   load(): void {
     this.loading.set(true);
-    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.service.list(this.page(), this.size(), this.search(), this.sort()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
       error: error => {
         this.loading.set(false);
@@ -78,9 +81,13 @@ export class PharmacyListComponent {
   onQuery(query: PageQuery): void {
     const page = query.page ?? 0;
     const size = query.size ?? 10;
-    if (page === this.page() && size === this.size()) return;
+    const search = query.search ?? '';
+    const sort = buildSort(query, this.sortFields);
+    if (page === this.page() && size === this.size() && search === this.search() && sort === this.sort()) return;
     this.page.set(page);
     this.size.set(size);
+    this.search.set(search);
+    this.sort.set(sort);
     this.load();
   }
 

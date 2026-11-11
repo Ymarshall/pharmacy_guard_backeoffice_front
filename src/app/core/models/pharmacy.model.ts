@@ -23,7 +23,8 @@ export interface Pharmacy {
   description?: string;
   photo?: string;
   statut: 'ACTIF' | 'INACTIF';
-  location: string;
+  /** Null si l'officine n'a pas de coordonnées GPS. */
+  location: string | null;
   assuranceIds?: number[]; // Pour l'envoi (create/update)
   assurances?: Assurance[]; // Pour la réception (get)
   averageRating?: number;

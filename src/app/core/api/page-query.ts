@@ -17,6 +17,14 @@ export interface PageQuery {
   search?: string;
 }
 
+/** `sort=champ,asc` uniquement si la colonne est dans la liste blanche du backend. */
+export function buildSort(query: PageQuery, fields: Record<string, string>): string | undefined {
+  if (!query.sort || !fields[query.sort]) {
+    return undefined;
+  }
+  return `${fields[query.sort]},${query.direction === 'desc' ? 'desc' : 'asc'}`;
+}
+
 export function toHttpParams(query?: PageQuery): HttpParams {
   let params = new HttpParams();
   if (!query) {

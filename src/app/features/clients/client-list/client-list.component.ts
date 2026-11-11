@@ -11,7 +11,7 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { formatFrDate } from '../../../shared/util/dates';
 import { httpErrorMessage } from '../../../shared/util/http-error';
-import { PageQuery } from '../../../core/api/page-query';
+import { buildSort, PageQuery } from '../../../core/api/page-query';
 
 @Component({
   selector: 'app-client-list',
@@ -20,7 +20,7 @@ import { PageQuery } from '../../../core/api/page-query';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-page-header title="Clients" subtitle="Comptes de l’application mobile" [crumbs]="[{label:'Accueil', link:'/dashboard'},{label:'Clients'}]" />
-    <app-data-table mode="server" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucun client" (queryChange)="onQuery($event)">
+    <app-data-table mode="server" [remoteQuery]="true" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucun client" (queryChange)="onQuery($event)">
       <ng-template appTableCell="status" let-row><app-status-badge [value]="!!row.isActive" /></ng-template>
       <ng-template appTableCell="actions" let-row>
         <button mat-stroked-button type="button" (click)="toggle(row)">{{ row.isActive ? 'Désactiver' : 'Activer' }}</button>
@@ -38,27 +38,33 @@ export class ClientListComponent {
   readonly total = signal(0);
   readonly page = signal(0);
   readonly size = signal(10);
+  readonly search = signal('');
+  readonly sort = signal<string | undefined>(undefined);
   readonly columns: TableColumn<Client>[] = [
-    { key: 'name', label: 'Nom', value: row => `${row.firstName} ${row.lastName}` },
+    { key: 'lastName', label: 'Nom', sortField: 'lastName', value: row => `${row.firstName} ${row.lastName}` },
     { key: 'email', label: 'E-mail', value: row => row.email },
     { key: 'phone', label: 'Téléphone', value: row => row.phone || '—' },
-    { key: 'provider', label: 'Fournisseur', value: row => row.providerType || '—' },
-    { key: 'status', label: 'Statut', value: row => !!row.isActive },
-    { key: 'createdAt', label: 'Créé le', value: row => formatFrDate(row.createdAt, true) },
+    { key: 'provider', label: 'Fournisseur', sortable: false, value: row => row.providerType || '—' },
+    { key: 'status', label: 'Statut', sortable: false, value: row => !!row.isActive },
+    { key: 'createdAt', label: 'Créé le', sortable: false, value: row => formatFrDate(row.createdAt, true) },
     { key: 'actions', label: 'Actions', sortable: false }
   ];
   readonly text = (row: Client) => `${row.firstName} ${row.lastName} ${row.email} ${row.phone || ''}`;
   constructor() { this.load(); }
   load(): void {
-    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.service.list(this.page(), this.size(), this.search(), this.sort()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
       error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
     });
   }
   onQuery(query: PageQuery): void {
-    const page = query.page ?? 0; const size = query.size ?? 10;
-    if (page === this.page() && size === this.size()) return;
-    this.page.set(page); this.size.set(size); this.load();
+    const page = query.page ?? 0;
+    const size = query.size ?? 10;
+    const search = query.search ?? '';
+    const sort = buildSort(query, { lastName: 'lastName', email: 'email', phone: 'phone' });
+    if (page === this.page() && size === this.size() && search === this.search() && sort === this.sort()) return;
+    this.page.set(page); this.size.set(size); this.search.set(search); this.sort.set(sort);
+    this.load();
   }
   toggle(row: Client): void {
     if (!row.id) return;

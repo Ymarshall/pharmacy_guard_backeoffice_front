@@ -34,19 +34,25 @@ import { formatFrDate } from '../../shared/util/dates';
       </section>
 
       <section class="pg-panel" style="margin-bottom: 16px">
-        @if (data.currentPeriod?.startDate) {
+        @if (data.currentPeriod; as period) {
+          @if (period.startDate) {
           <div class="pg-split">
             <div>
               <span class="pg-badge-duty pg-badge">De garde</span>
-              <h2 style="margin: 8px 0">{{ format(data.currentPeriod.startDate) }} — {{ format(data.currentPeriod.endDate) }}</h2>
-              <p class="pg-muted">{{ data.currentPeriod.daysRemaining ?? 0 }} jour(s) restant(s)</p>
+              <h2 style="margin: 8px 0">{{ format(period.startDate) }} — {{ format(period.endDate) }}</h2>
+              <p class="pg-muted">{{ period.daysRemaining ?? 0 }} jour(s) restant(s)</p>
             </div>
             <div class="pg-kpi-grid" style="margin:0">
-              <div><span class="pg-muted">Pharmacies</span><strong>{{ data.currentPeriod.pharmaciesInDuty || 0 }}</strong></div>
-              <div><span class="pg-muted">Zones</span><strong>{{ data.currentPeriod.zonesCovered || 0 }}</strong></div>
-              <div><span class="pg-muted">Fichiers</span><strong>{{ data.currentPeriod.filesProcessed || 0 }}/{{ data.currentPeriod.filesUploaded || 0 }}</strong></div>
+              <div><span class="pg-muted">Pharmacies</span><strong>{{ period.pharmaciesInDuty || 0 }}</strong></div>
+              <div><span class="pg-muted">Zones</span><strong>{{ period.zonesCovered || 0 }}</strong></div>
+              <div><span class="pg-muted">Fichiers</span><strong>{{ period.filesProcessed || 0 }}/{{ period.filesUploaded || 0 }}</strong></div>
             </div>
           </div>
+          } @else {
+          <app-empty-state title="Aucune période active" hint="Créez une période puis importez les affiches." icon="event_busy">
+            <a mat-flat-button color="primary" routerLink="/duty-periods/new">Créer une période</a>
+          </app-empty-state>
+          }
         } @else {
           <app-empty-state title="Aucune période active" hint="Créez une période puis importez les affiches." icon="event_busy">
             <a mat-flat-button color="primary" routerLink="/duty-periods/new">Créer une période</a>
