@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from '../api/api-client';
-import { PageQuery } from '../api/page-query';
+import { PageQuery, PageResult } from '../api/page-query';
 import { EmergencyNumber, EmergencyNumberCreateRequest } from '../models/emergency-number.model';
 import { Zone, ZoneCreateRequest } from '../models/zone.model';
 import { Client, ClientStatusRequest, ClientUpdateRequest } from '../models/client.model';
@@ -15,6 +15,7 @@ import { Review } from '../models/review.model';
 export class EmergencyNumberService {
   private readonly api = inject(ApiClient);
   getAll(query?: PageQuery): Observable<EmergencyNumber[]> { return this.api.get('/emergency-numbers', query); }
+  list(page = 0, size = 10): Observable<PageResult<EmergencyNumber>> { return this.api.get('/emergency-numbers', { page, size }); }
   getById(id: number): Observable<EmergencyNumber> { return this.api.get(`/emergency-numbers/${id}`); }
   create(body: EmergencyNumberCreateRequest): Observable<EmergencyNumber> { return this.api.post('/emergency-numbers', body); }
   update(id: number, body: EmergencyNumberCreateRequest): Observable<EmergencyNumber> { return this.api.put(`/emergency-numbers/${id}`, body); }
@@ -25,6 +26,7 @@ export class EmergencyNumberService {
 export class ZoneService {
   private readonly api = inject(ApiClient);
   getAll(query?: PageQuery): Observable<Zone[]> { return this.api.get('/zones', query); }
+  list(page = 0, size = 10): Observable<PageResult<Zone>> { return this.api.get('/zones', { page, size }); }
   getById(id: number): Observable<Zone> { return this.api.get(`/zones/${id}`); }
   getByType(type: string): Observable<Zone[]> { return this.api.get(`/zones/type/${encodeURIComponent(type)}`); }
   getByRegion(region: string): Observable<Zone[]> { return this.api.get(`/zones/region/${encodeURIComponent(region)}`); }
@@ -38,6 +40,7 @@ export class ZoneService {
 export class ClientService {
   private readonly api = inject(ApiClient);
   getAll(query?: PageQuery): Observable<Client[]> { return this.api.get('/clients', query); }
+  list(page = 0, size = 10): Observable<PageResult<Client>> { return this.api.get('/clients', { page, size }); }
   getById(id: number): Observable<Client> { return this.api.get(`/clients/${id}`); }
   update(id: number, body: ClientUpdateRequest): Observable<Client> { return this.api.put(`/clients/${id}`, body); }
   updateStatus(id: number, status: ClientStatusRequest): Observable<Client> { return this.api.put(`/clients/${id}/status`, status); }
@@ -49,6 +52,7 @@ export class ClientService {
 export class UserService {
   private readonly api = inject(ApiClient);
   getAll(query?: PageQuery): Observable<User[]> { return this.api.get('/users', query); }
+  list(page = 0, size = 10): Observable<PageResult<User>> { return this.api.get('/users', { page, size }); }
   getById(id: number): Observable<User> { return this.api.get(`/users/${id}`); }
   create(body: UserCreateRequest): Observable<User> { return this.api.post('/users', body); }
   update(id: number, body: UserUpdateRequest): Observable<User> { return this.api.put(`/users/${id}`, body); }
@@ -59,6 +63,7 @@ export class UserService {
 export class DutyPeriodService {
   private readonly api = inject(ApiClient);
   getAll(query?: PageQuery): Observable<DutyPeriod[]> { return this.api.get('/duty-periods', query); }
+  list(page = 0, size = 10): Observable<PageResult<DutyPeriod>> { return this.api.get('/duty-periods', { page, size }); }
   getById(id: number): Observable<DutyPeriod> { return this.api.get(`/duty-periods/${id}`); }
   getCurrent(): Observable<DutyPeriod> { return this.api.get('/duty-periods/current'); }
   getAllCurrent(): Observable<DutyPeriod[]> { return this.api.get('/duty-periods/current/all'); }

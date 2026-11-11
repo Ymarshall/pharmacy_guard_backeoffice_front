@@ -1,6 +1,14 @@
 import { HttpParams } from '@angular/common/http';
 
 /** Requête de liste, prête à être envoyée quand la pagination serveur existera. */
+export interface PageResult<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
 export interface PageQuery {
   page?: number;
   size?: number;

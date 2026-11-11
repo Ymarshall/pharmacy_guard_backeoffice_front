@@ -89,7 +89,7 @@ export class LoginComponent {
       },
       error: error => {
         this.submitting.set(false);
-        this.message.set(httpErrorMessage(error, 'E-mail ou mot de passe incorrect') ?? '');
+        this.message.set(httpErrorMessage(error, 'E-mail ou mot de passe incorrect', true) ?? '');
       }
     });
   }

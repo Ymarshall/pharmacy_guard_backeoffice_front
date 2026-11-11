@@ -39,7 +39,7 @@ interface NavItem {
 export class SidebarComponent {
   private readonly auth = inject(AuthService);
   private readonly items: NavItem[] = [
-    { label: 'Tableau de bord', icon: 'dashboard', route: '/dashboard', exact: true, roles: ['ADMIN', 'OPERATOR', 'READER'] },
+    { label: 'Tableau de bord', icon: 'dashboard', route: '/dashboard', exact: true, roles: ['ADMIN', 'OPERATOR'] },
     { label: 'Pharmacies', icon: 'local_pharmacy', route: '/pharmacies', roles: ['ADMIN', 'OPERATOR'] },
     { label: 'Import d’affiches', icon: 'upload_file', route: '/import-affiches', roles: ['ADMIN', 'OPERATOR'] },
     { label: 'Périodes de garde', icon: 'calendar_month', route: '/duty-periods', roles: ['ADMIN', 'OPERATOR'] },
@@ -49,14 +49,14 @@ export class SidebarComponent {
     { label: 'Zones', icon: 'location_on', route: '/zones', roles: ['ADMIN', 'OPERATOR'] },
     { label: 'Clients', icon: 'people', route: '/clients', roles: ['ADMIN', 'OPERATOR'] },
     { label: 'Utilisateurs', icon: 'admin_panel_settings', route: '/users', roles: ['ADMIN'] },
-    { label: 'Rapports', icon: 'monitoring', route: '/rapports', roles: ['ADMIN', 'OPERATOR', 'READER'] },
+    { label: 'Rapports', icon: 'monitoring', route: '/rapports', roles: ['ADMIN', 'OPERATOR'] },
     { label: 'Paramètres', icon: 'settings', route: '/parametres', roles: ['ADMIN'] }
   ];
 
   readonly visible = computed(() => {
     const role = this.auth.user()?.role;
     if (!role) {
-      return this.items;
+      return this.items.filter(item => item.route === '/dashboard');
     }
     return this.items.filter(item => item.roles.includes(role));
   });

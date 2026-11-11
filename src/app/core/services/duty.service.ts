@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { ApiClient } from '../api/api-client';
-import { PageQuery } from '../api/page-query';
+import { PageQuery, PageResult } from '../api/page-query';
 import { Duty, DutyCreateRequest, DutyProcessRequest } from '../models/duty.model';
 
 @Injectable({ providedIn: 'root' })
@@ -13,6 +13,10 @@ export class DutyService {
 
   getAll(query?: PageQuery): Observable<Duty[]> {
     return this.api.get<Duty[]>('/duty-files', query);
+  }
+
+  list(page = 0, size = 10): Observable<PageResult<Duty>> {
+    return this.api.get<PageResult<Duty>>('/duty-files', { page, size });
   }
 
   getById(id: number): Observable<Duty> {

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from '../api/api-client';
-import { PageQuery } from '../api/page-query';
+import { PageQuery, PageResult } from '../api/page-query';
 import { Assurance, AssuranceCreateRequest, Pharmacy, PharmacyCreateRequest } from '../models/pharmacy.model';
 
 @Injectable({ providedIn: 'root' })
@@ -10,6 +10,10 @@ export class PharmacyService {
 
   getAll(query?: PageQuery): Observable<Pharmacy[]> {
     return this.api.get<Pharmacy[]>('/pharmacies', query);
+  }
+
+  list(page = 0, size = 10): Observable<PageResult<Pharmacy>> {
+    return this.api.get<PageResult<Pharmacy>>('/pharmacies', { page, size });
   }
 
   getById(id: number): Observable<Pharmacy> {
@@ -35,6 +39,10 @@ export class AssuranceService {
 
   getAll(query?: PageQuery): Observable<Assurance[]> {
     return this.api.get<Assurance[]>('/assurances', query);
+  }
+
+  list(page = 0, size = 10): Observable<PageResult<Assurance>> {
+    return this.api.get<PageResult<Assurance>>('/assurances', { page, size });
   }
 
   getById(id: number): Observable<Assurance> {

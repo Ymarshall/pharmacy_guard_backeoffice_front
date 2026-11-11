@@ -10,6 +10,7 @@ import { DataTableComponent, TableCellDirective, TableColumn } from '../../../sh
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { httpErrorMessage } from '../../../shared/util/http-error';
+import { PageQuery } from '../../../core/api/page-query';
 
 const CATEGORIES: Record<string, string> = { medical: 'Médical', fire: 'Pompiers', police: 'Police', bloodBank: 'Banque de sang', other: 'Autre' };
 
@@ -22,7 +23,7 @@ const CATEGORIES: Record<string, string> = { medical: 'Médical', fire: 'Pompier
     <app-page-header title="Numéros d’urgence" subtitle="Numéros diffusés sur l’application mobile" [crumbs]="[{label:'Accueil', link:'/dashboard'},{label:'Urgences'}]">
       <a mat-flat-button color="primary" routerLink="/emergency-numbers/new"><mat-icon>add</mat-icon> Nouveau numéro</a>
     </app-page-header>
-    <app-data-table [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucun numéro">
+    <app-data-table mode="server" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucun numéro" (queryChange)="onQuery($event)">
       <ng-template appTableCell="actions" let-row>
         <div class="pg-row-actions">
           <button mat-icon-button type="button" (click)="edit(row)" aria-label="Modifier"><mat-icon>edit</mat-icon></button>
@@ -40,6 +41,9 @@ export class EmergencyNumberListComponent {
   private readonly notify = inject(NotifyService);
   readonly loading = signal(true);
   readonly rows = signal<EmergencyNumber[]>([]);
+  readonly total = signal(0);
+  readonly page = signal(0);
+  readonly size = signal(10);
   readonly columns: TableColumn<EmergencyNumber>[] = [
     { key: 'name', label: 'Nom', value: row => row.name },
     { key: 'number', label: 'Numéro', value: row => row.number },
@@ -49,10 +53,16 @@ export class EmergencyNumberListComponent {
   readonly text = (row: EmergencyNumber) => `${row.name} ${row.number} ${row.category || ''}`;
   constructor() { this.load(); }
   load(): void {
-    this.service.getAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: rows => { this.rows.set(rows || []); this.loading.set(false); },
+    this.loading.set(true);
+    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
       error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
     });
+  }
+  onQuery(query: PageQuery): void {
+    const page = query.page ?? 0; const size = query.size ?? 10;
+    if (page === this.page() && size === this.size()) return;
+    this.page.set(page); this.size.set(size); this.load();
   }
   edit(row: EmergencyNumber): void { void this.router.navigate(['/emergency-numbers/edit', row.id]); }
   remove(row: EmergencyNumber): void {

@@ -14,6 +14,7 @@ import { StatusBadgeComponent } from '../../../shared/ui/status-badge/status-bad
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { httpErrorMessage } from '../../../shared/util/http-error';
+import { PageQuery } from '../../../core/api/page-query';
 
 const LABELS: Record<string, string> = { VILLE: 'Ville', COMMUNE: 'Commune', DEPARTEMENT: 'Département', REGION: 'Région' };
 
@@ -26,7 +27,7 @@ const LABELS: Record<string, string> = { VILLE: 'Ville', COMMUNE: 'Commune', DEP
     <app-page-header title="Zones" subtitle="Découpage géographique" [crumbs]="[{label:'Accueil', link:'/dashboard'},{label:'Zones'}]">
       <a mat-flat-button color="primary" routerLink="/zones/new"><mat-icon>add</mat-icon> Nouvelle zone</a>
     </app-page-header>
-    <app-data-table [rows]="filtered()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucune zone">
+    <app-data-table mode="server" [total]="total()" [rows]="filtered()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucune zone" (queryChange)="onQuery($event)">
       <mat-form-field tableFilters appearance="outline" subscriptSizing="dynamic">
         <mat-label>Type</mat-label>
         <mat-select [ngModel]="type()" (ngModelChange)="type.set($event)">
@@ -54,6 +55,9 @@ export class ZoneListComponent {
   readonly labels = LABELS;
   readonly loading = signal(true);
   readonly rows = signal<Zone[]>([]);
+  readonly total = signal(0);
+  readonly page = signal(0);
+  readonly size = signal(10);
   readonly type = signal('');
   readonly filtered = computed(() => this.rows().filter(zone => !this.type() || zone.type === this.type()));
   readonly columns: TableColumn<Zone>[] = [
@@ -66,8 +70,18 @@ export class ZoneListComponent {
   ];
   readonly text = (row: Zone) => `${row.name} ${row.region} ${row.departement}`;
   constructor() {
-    this.service.getAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: rows => { this.rows.set(rows || []); this.loading.set(false); },
+    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
+      error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
+    });
+  }
+  onQuery(query: PageQuery): void {
+    const page = query.page ?? 0; const size = query.size ?? 10;
+    if (page === this.page() && size === this.size()) return;
+    this.page.set(page); this.size.set(size);
+    this.loading.set(true);
+    this.service.list(page, size).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: result => { this.rows.set(result.content || []); this.total.set(result.totalElements ?? 0); this.loading.set(false); },
       error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
     });
   }

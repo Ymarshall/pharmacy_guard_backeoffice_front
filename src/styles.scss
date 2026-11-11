@@ -218,9 +218,11 @@ p { margin: 0; }
 .pg-badge[data-status='INACTIF'], .pg-badge[data-status='DISABLED'], .pg-badge[data-status='DISABLE'], .pg-badge[data-status='FAILED'], .pg-badge[data-status='FALSE'] {
   background: #FDECEC; color: #8E1B1B;
 }
-.pg-badge[data-status='PENDING'], .pg-badge[data-status='DRAFT'], .pg-badge[data-status='TO_VERIFY'], .pg-badge[data-status='PROCESSING'] {
+.pg-badge[data-status='PENDING'], .pg-badge[data-status='DRAFT'], .pg-badge[data-status='TO_VERIFY'], .pg-badge[data-status='PROCESSING'], .pg-badge[data-status='AMBIGUOUS'] {
   background: #FFF1E0; color: var(--pg-duty);
 }
+.pg-badge[data-status='MATCHED'], .pg-badge[data-status='COMPLETED'] { background: #E5F5EC; color: var(--pg-green-dark); }
+.pg-badge[data-status='NOT_FOUND'] { background: #FDECEC; color: #8E1B1B; }
 .pg-badge-duty { background: #FFF1E0; color: var(--pg-duty); }
 
 .pg-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }

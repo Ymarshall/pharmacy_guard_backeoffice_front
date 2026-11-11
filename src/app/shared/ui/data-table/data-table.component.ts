@@ -130,14 +130,14 @@ export class DataTableComponent<T> {
 
   readonly filtered = computed(() => {
     const query = this.search();
-    const source = this.mode() === 'server' ? [...this.rows()] : this.rows().filter(row => {
+    const source = this.rows().filter(row => {
       if (!query) {
         return true;
       }
       return this.textOf()(row).toLowerCase().includes(query);
     });
     const key = this.sortKey();
-    if (!key || this.mode() === 'server') {
+    if (!key) {
       return source;
     }
     const column = this.columns().find(item => item.key === key);
@@ -148,7 +148,7 @@ export class DataTableComponent<T> {
   readonly filteredCount = computed(() => this.mode() === 'server' ? (this.total() ?? this.rows().length) : this.filtered().length);
   readonly pageRows = computed(() => {
     if (this.mode() === 'server') {
-      return this.rows();
+      return this.filtered();
     }
     const start = this.pageIndex() * this.pageSize();
     return this.filtered().slice(start, start + this.pageSize());
@@ -156,8 +156,10 @@ export class DataTableComponent<T> {
 
   onSearch(event: Event): void {
     this.searchInput.set((event.target as HTMLInputElement).value);
-    this.pageIndex.set(0);
-    this.emitQuery();
+    if (this.mode() === 'client') {
+      this.pageIndex.set(0);
+      this.emitQuery();
+    }
   }
 
   toggleSort(column: TableColumn<T>): void {
@@ -170,7 +172,9 @@ export class DataTableComponent<T> {
       this.sortKey.set(column.key);
       this.sortDir.set('asc');
     }
-    this.emitQuery();
+    if (this.mode() === 'client') {
+      this.emitQuery();
+    }
   }
 
   onPage(event: PageEvent): void {

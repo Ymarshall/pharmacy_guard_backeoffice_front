@@ -115,6 +115,26 @@ function dutyRow(id, periodId, pharmacyId, pharmacyName, zone, status) {
   };
 }
 
+function pageOf(url, items) {
+  if (!url.searchParams.has('page') && !url.searchParams.has('size')) return items;
+  const page = Number(url.searchParams.get('page') ?? 0);
+  const size = Number(url.searchParams.get('size') ?? 20);
+  const start = Math.max(0, page) * size;
+  return {
+    content: items.slice(start, start + size),
+    page,
+    size,
+    totalElements: items.length,
+    totalPages: Math.max(1, Math.ceil(items.length / Math.max(size, 1)))
+  };
+}
+
+function apiError(statusCode, status, message, path) {
+  return { timestamp: new Date().toISOString(), statusCode, status, error: message, message, path };
+}
+
+const loginAttempts = [];
+
 function send(res, status, body) {
   const payload = body === undefined ? '' : JSON.stringify(body);
   res.writeHead(status, {
@@ -228,9 +248,21 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   const path = url.pathname.replace(/\/$/, '') || '/';
   const method = req.method || 'GET';
+  const writing = method !== 'GET' && method !== 'HEAD';
+  if (writing && path !== '/api/auth/login' && !(req.headers.authorization || '').startsWith('Bearer ')) {
+    send(res, 401, apiError(401, 'UNAUTHORIZED', 'Authentification requise', path));
+    return;
+  }
 
   try {
     if (method === 'POST' && path === '/api/auth/login') {
+      const now = Date.now();
+      while (loginAttempts.length && now - loginAttempts[0] > 60000) loginAttempts.shift();
+      if (loginAttempts.length >= 10) {
+        send(res, 429, apiError(429, 'TOO_MANY_REQUESTS', 'Trop de tentatives de connexion. Réessayez dans une minute.', path));
+        return;
+      }
+      loginAttempts.push(now);
       const body = JSON.parse((await readBody(req)).toString() || '{}');
       send(res, 200, {
         id: 1,
@@ -239,7 +271,8 @@ const server = http.createServer(async (req, res) => {
         lastName: 'Kouassi',
         role: 'ADMIN',
         token: 'demo-token-non-secret',
-        expiresIn: 3600
+        tokenType: 'Bearer',
+        expiresInSeconds: 86400
       });
       return;
     }
@@ -266,7 +299,7 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    if (path === '/api/pharmacies' && method === 'GET') return send(res, 200, pharmacies);
+    if (path === '/api/pharmacies' && method === 'GET') return send(res, 200, pageOf(url, pharmacies));
     if (path === '/api/pharmacies' && method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString() || '{}');
       const created = { ...body, id: ++seq, name: String(body.name || '').toUpperCase(), assurances: assurances.filter(a => (body.assuranceIds || []).includes(a.id)) };
@@ -290,7 +323,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/assurances' && method === 'GET') return send(res, 200, assurances);
+    if (path === '/api/assurances' && method === 'GET') return send(res, 200, pageOf(url, assurances));
     if (path === '/api/assurances' && method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString() || '{}');
       const created = { id: ++seq, ...body };
@@ -314,7 +347,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/emergency-numbers' && method === 'GET') return send(res, 200, emergencies);
+    if (path === '/api/emergency-numbers' && method === 'GET') return send(res, 200, pageOf(url, emergencies));
     if (path === '/api/emergency-numbers' && method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString() || '{}');
       emergencies.push({ id: ++seq, ...body });
@@ -337,7 +370,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/zones' && method === 'GET') return send(res, 200, zones);
+    if (path === '/api/zones' && method === 'GET') return send(res, 200, pageOf(url, zones));
     if (path === '/api/zones/active' && method === 'GET') return send(res, 200, zones.filter(z => z.isActive));
     if (path === '/api/zones' && method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString() || '{}');
@@ -365,7 +398,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/clients' && method === 'GET') return send(res, 200, clients);
+    if (path === '/api/clients' && method === 'GET') return send(res, 200, pageOf(url, clients));
     const clientAction = path.match(/^\/api\/clients\/(\d+)(?:\/(status|activate|deactivate))?$/);
     if (clientAction) {
       const id = Number(clientAction[1]);
@@ -392,7 +425,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/users' && method === 'GET') return send(res, 200, users);
+    if (path === '/api/users' && method === 'GET') return send(res, 200, pageOf(url, users));
     if (path === '/api/users' && method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString() || '{}');
       const created = { id: ++seq, email: body.email, firstName: body.firstName, lastName: body.lastName, role: 'OPERATOR' };
@@ -417,7 +450,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/duty-periods' && method === 'GET') return send(res, 200, periods.map(syncPeriodDuties));
+    if (path === '/api/duty-periods' && method === 'GET') return send(res, 200, pageOf(url, periods.map(syncPeriodDuties)));
     if (path === '/api/duty-periods/current' && method === 'GET') return send(res, 200, syncPeriodDuties(periods.find(p => p.status === 'ACTIVE')));
     if (path === '/api/duty-periods/current/all' && method === 'GET') return send(res, 200, periods.filter(p => p.status === 'ACTIVE').map(syncPeriodDuties));
     if (path === '/api/duty-periods' && method === 'POST') {
@@ -448,7 +481,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (path === '/api/duty-files' && method === 'GET') return send(res, 200, dutyFiles);
+    if (path === '/api/duty-files' && method === 'GET') return send(res, 200, pageOf(url, dutyFiles.map(file => ({
+      ...file,
+      uploadDate: file.uploadDate || file.createdAt,
+      status: file.status === 'PROCESSED' ? 'COMPLETED' : file.status
+    }))));
     const filesByPeriod = path.match(/^\/api\/duty-files\/period\/(\d+)$/);
     if (filesByPeriod && method === 'GET') {
       const id = Number(filesByPeriod[1]);
@@ -464,6 +501,7 @@ const server = http.createServer(async (req, res) => {
         fileName: file.filename,
         status: 'PENDING',
         dutyPeriodId: periodId,
+        uploadDate: new Date().toISOString(),
         createdAt: new Date().toISOString()
       }));
       dutyFiles.push(...created);
@@ -484,8 +522,38 @@ const server = http.createServer(async (req, res) => {
       dutyFiles.push(created);
       return send(res, 201, created);
     }
-    if (path === '/api/duty-files/preview' && method === 'POST') {
-      return send(res, 404, { message: 'Prévisualisation non disponible sur cette version de l’API' });
+    const previewMatch = path.match(/^\/api\/duty-files\/(\d+)\/preview$/);
+    if (previewMatch && method === 'POST') {
+      await readBody(req);
+      const id = Number(previewMatch[1]);
+      const file = dutyFiles.find(item => item.id === id);
+      if (!file) return send(res, 404, apiError(404, 'NOT_FOUND', 'Fichier de garde introuvable', path));
+      const alt = (pharmacyId, name, city, commune, score) => ({ pharmacyId, name, city, commune, phone: '', score });
+      const lines = [
+        { lineIndex: 0, zone: 'Cocody', pharmacyName: 'PHARMACIE DU PLATEAU', normalizedName: 'PHARMACIE DU PLATEAU', pharmacistName: 'Dr Awa Koné', phoneNumbers: '+2252720201001', location: 'Plateau', matchStatus: 'MATCHED', confidence: 0.97, suggestedPharmacyId: 1, suggestedPharmacyName: 'PHARMACIE DU PLATEAU', suggestedCity: 'Abidjan', dutyAlreadyExists: false, alternatives: [alt(1, 'PHARMACIE DU PLATEAU', 'Abidjan', 'Cocody', 0.97), alt(5, 'PHARMACIE LES OSCARS', 'Abidjan', 'Cocody', 0.61)] },
+        { lineIndex: 1, zone: 'Marcory', pharmacyName: 'PHARMACIE DE LA PAI', normalizedName: 'PHARMACIE DE LA PAIX', pharmacistName: 'Dr Yao', phoneNumbers: '', location: '', matchStatus: 'AMBIGUOUS', confidence: 0.86, suggestedPharmacyId: 2, suggestedPharmacyName: 'PHARMACIE DE LA PAIX', suggestedCity: 'Abidjan', dutyAlreadyExists: false, alternatives: [alt(2, 'PHARMACIE DE LA PAIX', 'Abidjan', 'Marcory', 0.86), alt(4, 'PHARMACIE DU MARCHE', 'Abidjan', 'Treichville', 0.74), alt(6, 'PHARMACIE DE L’INDENIE', 'Abidjan', 'Abobo', 0.58)] },
+        { lineIndex: 2, zone: 'Bingerville', pharmacyName: 'PHARMACIE NOUVELLE DE BINGERVILLE', normalizedName: 'PHARMACIE NOUVELLE DE BINGERVILLE', pharmacistName: '', phoneNumbers: '', location: '', matchStatus: 'NOT_FOUND', confidence: 0.41, suggestedPharmacyId: null, suggestedPharmacyName: null, suggestedCity: null, dutyAlreadyExists: false, alternatives: [alt(6, 'PHARMACIE DE L’INDENIE', 'Abidjan', 'Abobo', 0.58)] }
+      ];
+      return send(res, 200, { dutyFileId: id, dutyPeriodId: file.dutyPeriodId, contentHash: 'demo', alreadyProcessed: false, linesExtracted: lines.length, matched: 1, ambiguous: 1, notFound: 1, duplicates: 0, lines });
+    }
+    const confirmMatch = path.match(/^\/api\/duty-files\/(\d+)\/confirm$/);
+    if (confirmMatch && method === 'POST') {
+      const id = Number(confirmMatch[1]);
+      const file = dutyFiles.find(item => item.id === id);
+      if (!file) return send(res, 404, apiError(404, 'NOT_FOUND', 'Fichier de garde introuvable', path));
+      const body = JSON.parse((await readBody(req)).toString() || '{}');
+      let dutiesCreated = 0, skipped = 0, duplicates = 0, errors = 0;
+      for (const line of body.lines || []) {
+        if (line.skip) { skipped++; continue; }
+        if (!line.pharmacyId) { errors++; continue; }
+        const exists = duties.some(duty => duty.dutyPeriodId === file.dutyPeriodId && duty.pharmacyId === line.pharmacyId);
+        if (exists) { duplicates++; continue; }
+        const pharmacy = pharmacies.find(item => item.id === line.pharmacyId);
+        duties.push({ id: ++seq, pharmacyId: line.pharmacyId, pharmacyName: pharmacy?.name || line.pharmacyName, pharmacyZone: line.zone, dutyPeriodId: file.dutyPeriodId, status: 'ACTIVE', dutyFileId: file.id, dutyFileName: file.fileName, createdAt: new Date().toISOString() });
+        dutiesCreated++;
+      }
+      file.status = errors && !dutiesCreated ? 'FAILED' : 'COMPLETED';
+      return send(res, 200, { dutiesCreated, pharmaciesCreated: 0, skipped, duplicates, errors, lines: [] });
     }
     const processMatch = path.match(/^\/api\/duty-files\/(\d+)\/process$/);
     if (processMatch && method === 'POST') {

@@ -4,7 +4,8 @@ export interface Duty {
   description?: string;
   file?: string;
   fileName?: string;
-  status?: 'PENDING' | 'PROCESSED' | 'FAILED' | 'ACTIVE' | 'TO_VERIFY' | 'DISABLE' | 'DISABLED';
+  status?: 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'COMPLETED' | 'FAILED' | 'ACTIVE' | 'TO_VERIFY' | 'DISABLE' | 'DISABLED';
+  uploadDate?: string;
   processedDate?: string | null;
   zone?: string;
   zoneName?: string;

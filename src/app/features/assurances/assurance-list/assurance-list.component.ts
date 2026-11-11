@@ -10,6 +10,7 @@ import { DataTableComponent, TableCellDirective, TableColumn } from '../../../sh
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { httpErrorMessage } from '../../../shared/util/http-error';
+import { PageQuery } from '../../../core/api/page-query';
 
 @Component({
   selector: 'app-assurance-list',
@@ -20,7 +21,7 @@ import { httpErrorMessage } from '../../../shared/util/http-error';
     <app-page-header title="Assurances" subtitle="Organismes pris en charge" [crumbs]="[{label:'Accueil', link:'/dashboard'},{label:'Assurances'}]">
       <a mat-flat-button color="primary" routerLink="/assurances/new"><mat-icon>add</mat-icon> Nouvelle assurance</a>
     </app-page-header>
-    <app-data-table [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucune assurance">
+    <app-data-table mode="server" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucune assurance" (queryChange)="onQuery($event)">
       <ng-template appTableCell="actions" let-row>
         <div class="pg-row-actions">
           <button mat-icon-button type="button" aria-label="Modifier" (click)="edit(row)"><mat-icon>edit</mat-icon></button>
@@ -38,6 +39,9 @@ export class AssuranceListComponent {
   private readonly notify = inject(NotifyService);
   readonly loading = signal(true);
   readonly rows = signal<Assurance[]>([]);
+  readonly total = signal(0);
+  readonly page = signal(0);
+  readonly size = signal(10);
   readonly columns: TableColumn<Assurance>[] = [
     { key: 'name', label: 'Nom', value: row => row.name },
     { key: 'description', label: 'Description', value: row => row.description || '—' },
@@ -47,10 +51,17 @@ export class AssuranceListComponent {
   constructor() { this.load(); }
   load(): void {
     this.loading.set(true);
-    this.service.getAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: rows => { this.rows.set(rows || []); this.loading.set(false); },
+    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
       error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
     });
+  }
+  onQuery(query: PageQuery): void { this.changePage(query); }
+  private changePage(query: PageQuery): void {
+    const page = query.page ?? 0;
+    const size = query.size ?? 10;
+    if (page === this.page() && size === this.size()) return;
+    this.page.set(page); this.size.set(size); this.load();
   }
   edit(row: Assurance): void { void this.router.navigate(['/assurances/edit', row.id]); }
   remove(row: Assurance): void {

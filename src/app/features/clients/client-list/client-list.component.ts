@@ -11,6 +11,7 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { formatFrDate } from '../../../shared/util/dates';
 import { httpErrorMessage } from '../../../shared/util/http-error';
+import { PageQuery } from '../../../core/api/page-query';
 
 @Component({
   selector: 'app-client-list',
@@ -19,7 +20,7 @@ import { httpErrorMessage } from '../../../shared/util/http-error';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-page-header title="Clients" subtitle="Comptes de l’application mobile" [crumbs]="[{label:'Accueil', link:'/dashboard'},{label:'Clients'}]" />
-    <app-data-table [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucun client">
+    <app-data-table mode="server" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucun client" (queryChange)="onQuery($event)">
       <ng-template appTableCell="status" let-row><app-status-badge [value]="!!row.isActive" /></ng-template>
       <ng-template appTableCell="actions" let-row>
         <button mat-stroked-button type="button" (click)="toggle(row)">{{ row.isActive ? 'Désactiver' : 'Activer' }}</button>
@@ -34,6 +35,9 @@ export class ClientListComponent {
   private readonly notify = inject(NotifyService);
   readonly loading = signal(true);
   readonly rows = signal<Client[]>([]);
+  readonly total = signal(0);
+  readonly page = signal(0);
+  readonly size = signal(10);
   readonly columns: TableColumn<Client>[] = [
     { key: 'name', label: 'Nom', value: row => `${row.firstName} ${row.lastName}` },
     { key: 'email', label: 'E-mail', value: row => row.email },
@@ -46,10 +50,15 @@ export class ClientListComponent {
   readonly text = (row: Client) => `${row.firstName} ${row.lastName} ${row.email} ${row.phone || ''}`;
   constructor() { this.load(); }
   load(): void {
-    this.service.getAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: rows => { this.rows.set(rows || []); this.loading.set(false); },
+    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
       error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
     });
+  }
+  onQuery(query: PageQuery): void {
+    const page = query.page ?? 0; const size = query.size ?? 10;
+    if (page === this.page() && size === this.size()) return;
+    this.page.set(page); this.size.set(size); this.load();
   }
   toggle(row: Client): void {
     if (!row.id) return;

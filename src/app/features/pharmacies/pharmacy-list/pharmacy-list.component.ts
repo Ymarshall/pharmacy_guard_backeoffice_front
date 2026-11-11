@@ -11,6 +11,7 @@ import { DataTableComponent, TableCellDirective, TableColumn } from '../../../sh
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { httpErrorMessage } from '../../../shared/util/http-error';
+import { PageQuery } from '../../../core/api/page-query';
 import { PharmacyReviewsDialogComponent } from '../pharmacy-reviews-dialog/pharmacy-reviews-dialog.component';
 
 @Component({
@@ -22,7 +23,7 @@ import { PharmacyReviewsDialogComponent } from '../pharmacy-reviews-dialog/pharm
     <app-page-header title="Pharmacies" subtitle="Référentiel des officines" [crumbs]="[{label:'Accueil', link:'/dashboard'}, {label:'Pharmacies'}]">
       <a mat-flat-button color="primary" routerLink="/pharmacies/new"><mat-icon>add</mat-icon> Nouvelle pharmacie</a>
     </app-page-header>
-    <app-data-table [rows]="rows()" [columns]="columns" [loading]="loading()" emptyTitle="Aucune pharmacie" emptyHint="Ajoutez la première officine du référentiel." [textOf]="textOf">
+    <app-data-table mode="server" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" emptyTitle="Aucune pharmacie" emptyHint="Ajoutez la première officine du référentiel." [textOf]="textOf" (queryChange)="onQuery($event)">
       <ng-template appTableCell="statut" let-row>
         <span class="pg-badge" [attr.data-status]="row.statut">{{ row.statut === 'ACTIF' ? 'Actif' : 'Inactif' }}</span>
       </ng-template>
@@ -45,6 +46,9 @@ export class PharmacyListComponent {
   private readonly dialog = inject(MatDialog);
   readonly loading = signal(true);
   readonly rows = signal<Pharmacy[]>([]);
+  readonly total = signal(0);
+  readonly page = signal(0);
+  readonly size = signal(10);
   readonly columns: TableColumn<Pharmacy>[] = [
     { key: 'name', label: 'Nom', value: row => row.name },
     { key: 'city', label: 'Ville', value: row => row.city },
@@ -61,14 +65,23 @@ export class PharmacyListComponent {
 
   load(): void {
     this.loading.set(true);
-    this.service.getAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: rows => { this.rows.set(rows || []); this.loading.set(false); },
+    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
       error: error => {
         this.loading.set(false);
         const message = httpErrorMessage(error, 'Impossible de charger les pharmacies');
         if (message) this.notify.error(message);
       }
     });
+  }
+
+  onQuery(query: PageQuery): void {
+    const page = query.page ?? 0;
+    const size = query.size ?? 10;
+    if (page === this.page() && size === this.size()) return;
+    this.page.set(page);
+    this.size.set(size);
+    this.load();
   }
 
   edit(row: Pharmacy): void { void this.router.navigate(['/pharmacies/edit', row.id]); }

@@ -6,8 +6,8 @@ import { SessionStore } from './session.store';
 
 interface LoginResponse extends User {
   token?: string;
-  accessToken?: string;
-  expiresIn?: number;
+  tokenType?: string;
+  expiresInSeconds?: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -20,8 +20,8 @@ export class AuthService {
   login(credentials: LoginRequest): Observable<User> {
     return this.api.post<LoginResponse>('/auth/login', credentials).pipe(
       tap(response => {
-        const token = response.token || response.accessToken;
-        const expiresAt = response.expiresIn ? Date.now() + response.expiresIn * 1000 : undefined;
+        const token = response.token;
+        const expiresAt = response.expiresInSeconds ? Date.now() + response.expiresInSeconds * 1000 : undefined;
         const user: User = {
           id: response.id,
           email: response.email,

@@ -13,6 +13,7 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
 import { NotifyService } from '../../../shared/notify/notify.service';
 import { formatFrDate } from '../../../shared/util/dates';
 import { httpErrorMessage } from '../../../shared/util/http-error';
+import { PageQuery } from '../../../core/api/page-query';
 import { DutyProcessDialogComponent } from '../duty-process-dialog/duty-process-dialog.component';
 
 @Component({
@@ -25,8 +26,8 @@ import { DutyProcessDialogComponent } from '../duty-process-dialog/duty-process-
       <a mat-stroked-button routerLink="/import-affiches">Import d’affiches</a>
       <a mat-flat-button color="primary" routerLink="/duties/new"><mat-icon>add</mat-icon> Ajouter un fichier</a>
     </app-page-header>
-    <app-data-table [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucun fichier">
-      <ng-template appTableCell="status" let-row><app-status-badge [value]="row.status || 'PENDING'" /></ng-template>
+    <app-data-table mode="server" [total]="total()" [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucun fichier" (queryChange)="onQuery($event)">
+      <ng-template appTableCell="status" let-row><app-status-badge [value]="row.status === 'COMPLETED' ? 'PROCESSED' : (row.status || 'PENDING')" /></ng-template>
       <ng-template appTableCell="actions" let-row>
         <div class="pg-row-actions">
           @if (!row.status || row.status === 'PENDING') {
@@ -48,22 +49,30 @@ export class DutyListComponent {
   private readonly notify = inject(NotifyService);
   readonly loading = signal(true);
   readonly rows = signal<Duty[]>([]);
+  readonly total = signal(0);
+  readonly page = signal(0);
+  readonly size = signal(10);
   readonly columns: TableColumn<Duty>[] = [
     { key: 'name', label: 'Nom', value: row => row.name || row.fileName || '—' },
     { key: 'description', label: 'Description', value: row => row.description || '—' },
     { key: 'fileName', label: 'Fichier', value: row => row.fileName || '—' },
     { key: 'status', label: 'Statut', value: row => row.status || 'PENDING' },
-    { key: 'createdAt', label: 'Créé le', value: row => formatFrDate(row.createdAt, true) },
+    { key: 'createdAt', label: 'Déposé le', value: row => formatFrDate(row.uploadDate || row.createdAt, true) },
     { key: 'actions', label: 'Actions', sortable: false }
   ];
   readonly text = (row: Duty) => `${row.name || ''} ${row.description || ''} ${row.fileName || ''}`;
   constructor() { this.load(); }
   load(): void {
     this.loading.set(true);
-    this.service.getAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: rows => { this.rows.set(rows || []); this.loading.set(false); },
+    this.service.list(this.page(), this.size()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: page => { this.rows.set(page.content || []); this.total.set(page.totalElements ?? 0); this.loading.set(false); },
       error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
     });
+  }
+  onQuery(query: PageQuery): void {
+    const page = query.page ?? 0; const size = query.size ?? 10;
+    if (page === this.page() && size === this.size()) return;
+    this.page.set(page); this.size.set(size); this.load();
   }
   edit(row: Duty): void { void this.router.navigate(['/duties/edit', row.id]); }
   process(row: Duty): void {
