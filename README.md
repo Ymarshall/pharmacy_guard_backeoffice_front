@@ -1,27 +1,31 @@
-# PharmacyGuard
+# Pharmacie de garde — back-office
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 18.2.9.
+Back-office Angular 18 pour publier et piloter les pharmacies de garde en Côte d’Ivoire.
 
-## Development server
+## Lancer en local
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+Le front appelle l’API via le chemin relatif `/api` (`environment.ts`). En développement, le proxy Angular redirige ce chemin vers `http://localhost:8080`.
 
-## Code scaffolding
+```bash
+npm install
+ng serve
+```
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+Application : http://localhost:4200
 
-## Build
+Pour des captures ou une démo sans le backend Spring, un serveur hors build est disponible :
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory.
+```bash
+node tools/demo-api/server.mjs
+```
 
-## Running unit tests
+Il n’est pas compilé dans `ng build`.
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
+## Build et tests
 
-## Running end-to-end tests
+```bash
+ng build
+ng test --watch=false
+```
 
-Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.
-
-## Further help
-
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Le bundle initial de production reste sous le budget (avertissement 500 kB, erreur 1 MB).
