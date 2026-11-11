@@ -34,7 +34,7 @@ import { formatFrDate } from '../../shared/util/dates';
       </section>
 
       <section class="pg-panel" style="margin-bottom: 16px">
-        @if (data.currentPeriod) {
+        @if (data.currentPeriod?.startDate) {
           <div class="pg-split">
             <div>
               <span class="pg-badge-duty pg-badge">De garde</span>
