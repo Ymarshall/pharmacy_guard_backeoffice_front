@@ -1,0 +1,68 @@
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { DutyPeriod } from '../../../core/models/duty-period.model';
+import { DutyPeriodService } from '../../../core/services/reference.service';
+import { PageHeaderComponent } from '../../../shared/ui/page-header/page-header.component';
+import { DataTableComponent, TableCellDirective, TableColumn } from '../../../shared/ui/data-table/data-table.component';
+import { StatusBadgeComponent } from '../../../shared/ui/status-badge/status-badge.component';
+import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
+import { NotifyService } from '../../../shared/notify/notify.service';
+import { formatFrDate } from '../../../shared/util/dates';
+import { httpErrorMessage } from '../../../shared/util/http-error';
+
+@Component({
+  selector: 'app-duty-period-list',
+  standalone: true,
+  imports: [RouterLink, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent, TableCellDirective, StatusBadgeComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <app-page-header title="Périodes de garde" subtitle="Préparer, vérifier et activer une semaine de garde" [crumbs]="[{label:'Accueil', link:'/dashboard'},{label:'Périodes'}]">
+      <a mat-flat-button color="primary" routerLink="/duty-periods/new"><mat-icon>add</mat-icon> Nouvelle période</a>
+    </app-page-header>
+    <app-data-table [rows]="rows()" [columns]="columns" [loading]="loading()" [textOf]="text" emptyTitle="Aucune période">
+      <ng-template appTableCell="status" let-row><app-status-badge [value]="row.status || 'DRAFT'" /></ng-template>
+      <ng-template appTableCell="actions" let-row>
+        <div class="pg-row-actions">
+          <a mat-button [routerLink]="['/duty-periods', row.id]">Ouvrir</a>
+          <a mat-button [routerLink]="['/import-affiches']" [queryParams]="{ periodId: row.id }">Importer</a>
+          <button mat-icon-button type="button" aria-label="Supprimer" (click)="remove(row)"><mat-icon>delete</mat-icon></button>
+        </div>
+      </ng-template>
+    </app-data-table>
+  `
+})
+export class DutyPeriodListComponent {
+  private readonly service = inject(DutyPeriodService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly confirm = inject(ConfirmDialogService);
+  private readonly notify = inject(NotifyService);
+  readonly loading = signal(true);
+  readonly rows = signal<DutyPeriod[]>([]);
+  readonly columns: TableColumn<DutyPeriod>[] = [
+    { key: 'start', label: 'Début', value: row => formatFrDate(row.startDate) },
+    { key: 'end', label: 'Fin', value: row => formatFrDate(row.endDate) },
+    { key: 'status', label: 'Statut', value: row => row.status || 'DRAFT' },
+    { key: 'count', label: 'Fichiers', value: row => row.duties?.length || 0 },
+    { key: 'actions', label: 'Actions', sortable: false }
+  ];
+  readonly text = (row: DutyPeriod) => `${row.startDate} ${row.endDate} ${row.status || ''}`;
+  constructor() { this.load(); }
+  load(): void {
+    this.service.getAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: rows => { this.rows.set(rows || []); this.loading.set(false); },
+      error: error => { this.loading.set(false); const message = httpErrorMessage(error, 'Chargement impossible'); if (message) this.notify.error(message); }
+    });
+  }
+  remove(row: DutyPeriod): void {
+    this.confirm.ask({ title: 'Supprimer la période', message: 'Les gardes liées seront retirées avec la période.', confirmText: 'Supprimer' }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(ok => {
+      if (!ok || !row.id) return;
+      this.service.delete(row.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+        next: () => { this.notify.success('Période supprimée'); this.load(); },
+        error: error => { const message = httpErrorMessage(error, 'Suppression impossible'); if (message) this.notify.error(message); }
+      });
+    });
+  }
+}
